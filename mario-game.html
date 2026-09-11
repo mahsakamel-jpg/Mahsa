@@ -68,7 +68,7 @@
   <div id="gameArea">
     <div id="hud">Level <span id="levelNum">1</span>/10 &nbsp; Score: <span id="score">0</span> &nbsp; Coins: <span id="coins">0</span> &nbsp; Lives: <span id="lives">3</span></div>
     <canvas id="game" width="800" height="400"></canvas>
-    <div id="msg">Arrow keys / A-D to move, Space or Up to jump. Stomp goombas, grab coins, reach the flag! 10 levels await...</div>
+    <div id="msg">Arrow keys / A-D to move, Space or Up to jump. Stomp ghosts, grab coins, reach the flag! 10 levels await...</div>
   </div>
 </div>
 <script>
@@ -249,8 +249,8 @@
       flagX: 3150,
       worldWidth: 3350,
     },
-    { // 6 — Goomba Gauntlet (mostly flat, dense enemy timing challenge)
-      name: 'Goomba Gauntlet',
+    { // 6 — Ghost Gauntlet (mostly flat, dense enemy timing challenge)
+      name: 'Ghost Gauntlet',
       platforms: [
         { x: 0, y: GROUND_Y, w: 1400, h: 40 },
         { x: 1480, y: GROUND_Y, w: 1500, h: 40 },
@@ -356,7 +356,7 @@
       flagX: 3750,
       worldWidth: 3950,
     },
-    { // 10 — Alpaca's Last Stand (finale: gauntlet + elevators + boss goomba)
+    { // 10 — Alpaca's Last Stand (finale: gauntlet + elevators + boss ghost)
       name: "Alpaca's Last Stand",
       platforms: [
         { x: 0, y: GROUND_Y, w: 700, h: 40 },
@@ -515,7 +515,7 @@
     score = 0; coinCount = 0; lives = 3;
     levelComplete = false; gameOver = false; finished = false;
     loadLevel(0);
-    msgEl.textContent = 'Arrow keys / A-D to move, Space or Up to jump. Stomp goombas, grab coins, reach the flag! 10 levels await...';
+    msgEl.textContent = 'Arrow keys / A-D to move, Space or Up to jump. Stomp ghosts, grab coins, reach the flag! 10 levels await...';
   }
 
   function loseLife() {
@@ -772,69 +772,74 @@
     puff(x + 42, y, 18);
   }
 
-  function drawGoomba(en) {
+  function drawGhost(en) {
     const { x, w, h } = en;
-    const bob = Math.sin(en.x * 0.15 + en.y) * 1.6;
+    const bob = Math.sin(en.x * 0.1 + en.y) * 3;
     const y = en.y + bob;
     const cx = x + w / 2;
     const blinking = Math.floor(animTime * 0.5 + en.x) % 210 < 8;
-    ctx.save();
-    if (en.boss) {
-      ctx.shadowColor = 'rgba(220,60,40,0.7)';
-      ctx.shadowBlur = 14;
-    }
-    // cap (mushroom body)
-    ctx.fillStyle = en.boss ? '#6b2f14' : '#8b4513';
+
+    // soft contact shadow, anchored to the ground so the ghost reads as floating
+    ctx.fillStyle = 'rgba(10,12,35,0.28)';
     ctx.beginPath();
-    ctx.moveTo(x + w * 0.06, y + h);
-    ctx.quadraticCurveTo(x, y + h * 0.2, cx, y + h * 0.15);
-    ctx.quadraticCurveTo(x + w, y + h * 0.2, x + w * 0.94, y + h);
-    ctx.quadraticCurveTo(x + w * 0.85, y + h * 0.78, x + w * 0.62, y + h * 0.78);
-    ctx.lineTo(x + w * 0.38, y + h * 0.78);
-    ctx.quadraticCurveTo(x + w * 0.15, y + h * 0.78, x + w * 0.06, y + h);
+    ctx.ellipse(cx, en.y + h * 1.06, w * 0.4, h * 0.09, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.shadowColor = en.boss ? 'rgba(230,80,60,0.75)' : 'rgba(210,225,255,0.65)';
+    ctx.shadowBlur = en.boss ? 16 : 9;
+
+    // body: rounded dome top + wavy trailing bottom
+    ctx.fillStyle = en.boss ? '#e6d8f2' : '#f5f7ff';
+    ctx.globalAlpha = 0.94;
+    ctx.beginPath();
+    ctx.moveTo(x, y + h * 0.5);
+    ctx.arc(cx, y + h * 0.5, w * 0.5, Math.PI, 0);
+    ctx.lineTo(x + w, y + h * 0.86);
+    ctx.quadraticCurveTo(x + w * 0.83, y + h, x + w * 0.67, y + h * 0.86);
+    ctx.quadraticCurveTo(x + w * 0.5, y + h, x + w * 0.33, y + h * 0.86);
+    ctx.quadraticCurveTo(x + w * 0.17, y + h, x, y + h * 0.86);
     ctx.closePath();
     ctx.fill();
+    ctx.globalAlpha = 1;
     ctx.shadowBlur = 0;
-    // feet
-    ctx.fillStyle = '#5a2e0c';
-    ctx.beginPath();
-    ctx.ellipse(cx, y + h * 0.98, w * 0.46, h * 0.1, 0, 0, Math.PI * 2);
-    ctx.fill();
+
     if (en.boss) {
       // furrowed angry eyebrows
-      ctx.strokeStyle = '#3a1206';
+      ctx.strokeStyle = '#5a3a6e';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(x + w * 0.2, y + h * 0.26);
-      ctx.lineTo(x + w * 0.42, y + h * 0.34);
-      ctx.moveTo(x + w * 0.8, y + h * 0.26);
-      ctx.lineTo(x + w * 0.58, y + h * 0.34);
+      ctx.moveTo(x + w * 0.2, y + h * 0.32);
+      ctx.lineTo(x + w * 0.42, y + h * 0.4);
+      ctx.moveTo(x + w * 0.8, y + h * 0.32);
+      ctx.lineTo(x + w * 0.58, y + h * 0.4);
       ctx.stroke();
     }
+
     // eyes (blink now and then)
     if (blinking) {
-      ctx.strokeStyle = '#111';
+      ctx.strokeStyle = '#2a2a3a';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(x + w * 0.22, y + h * 0.42);
-      ctx.lineTo(x + w * 0.42, y + h * 0.42);
-      ctx.moveTo(x + w * 0.58, y + h * 0.42);
-      ctx.lineTo(x + w * 0.78, y + h * 0.42);
+      ctx.moveTo(x + w * 0.22, y + h * 0.48);
+      ctx.lineTo(x + w * 0.42, y + h * 0.48);
+      ctx.moveTo(x + w * 0.58, y + h * 0.48);
+      ctx.lineTo(x + w * 0.78, y + h * 0.48);
       ctx.stroke();
     } else {
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = '#2a2a3a';
       ctx.beginPath();
-      ctx.ellipse(x + w * 0.32, y + h * 0.42, w * 0.16, h * 0.2, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + w * 0.32, y + h * 0.48, w * 0.1, h * 0.13, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();
-      ctx.ellipse(x + w * 0.68, y + h * 0.42, w * 0.16, h * 0.2, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + w * 0.68, y + h * 0.48, w * 0.1, h * 0.13, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#111';
+      ctx.fillStyle = '#fff';
       ctx.beginPath();
-      ctx.arc(x + w * 0.34, y + h * 0.46, w * 0.06, 0, Math.PI * 2);
+      ctx.arc(x + w * 0.29, y + h * 0.43, w * 0.03, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(x + w * 0.7, y + h * 0.46, w * 0.06, 0, Math.PI * 2);
+      ctx.arc(x + w * 0.65, y + h * 0.43, w * 0.03, 0, Math.PI * 2);
       ctx.fill();
     }
     if (en.boss) {
@@ -1026,7 +1031,7 @@
 
     for (const en of level.enemies) {
       if (!en.alive) continue;
-      drawGoomba(en);
+      drawGhost(en);
     }
 
     ctx.fillStyle = '#c7d0e6';
