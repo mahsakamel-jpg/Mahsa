@@ -35,16 +35,52 @@
     text-shadow: 1px 1px #000;
     min-height: 20px;
   }
+  #titleScreen {
+    position: relative;
+    width: 640px;
+    height: 640px;
+    background: url('assets/title-night-alpaca.png') center / cover no-repeat;
+    border: 4px solid #222;
+    cursor: pointer;
+  }
+  #startBtn {
+    position: absolute;
+    left: 37%;
+    top: 86%;
+    width: 26%;
+    height: 8%;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+  }
+  #gameArea {
+    display: none;
+  }
 </style>
 </head>
 <body>
 <div id="wrap">
-  <div id="hud">Score: <span id="score">0</span> &nbsp; Coins: <span id="coins">0</span> &nbsp; Lives: <span id="lives">3</span></div>
-  <canvas id="game" width="800" height="400"></canvas>
-  <div id="msg">Arrow keys / A-D to move, Space or Up to jump. Stomp goombas, grab coins, reach the flag!</div>
+  <div id="titleScreen">
+    <button id="startBtn" aria-label="Start Game"></button>
+  </div>
+  <div id="gameArea">
+    <div id="hud">Score: <span id="score">0</span> &nbsp; Coins: <span id="coins">0</span> &nbsp; Lives: <span id="lives">3</span></div>
+    <canvas id="game" width="800" height="400"></canvas>
+    <div id="msg">Arrow keys / A-D to move, Space or Up to jump. Stomp goombas, grab coins, reach the flag!</div>
+  </div>
 </div>
 <script>
 (function() {
+  const titleScreen = document.getElementById('titleScreen');
+  const gameArea = document.getElementById('gameArea');
+  const startBtn = document.getElementById('startBtn');
+  function startGame() {
+    titleScreen.style.display = 'none';
+    gameArea.style.display = 'block';
+  }
+  startBtn.addEventListener('click', startGame);
+  titleScreen.addEventListener('click', startGame);
+
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
   const scoreEl = document.getElementById('score');
@@ -58,6 +94,9 @@
 
   const keys = {};
   window.addEventListener('keydown', e => {
+    if (titleScreen.style.display !== 'none' && (e.code === 'Space' || e.code === 'Enter')) {
+      startGame();
+    }
     keys[e.code] = true;
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
   });
