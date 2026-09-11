@@ -245,6 +245,102 @@
     ctx.fill();
   }
 
+  function drawAlpaca() {
+    const { x, y, w, h, facing } = player;
+    const cx = x + w / 2;
+
+    ctx.save();
+
+    // legs
+    ctx.fillStyle = '#3a78c9';
+    ctx.fillRect(x + w * 0.14, y + h * 0.82, w * 0.2, h * 0.2);
+    ctx.fillRect(x + w * 0.66, y + h * 0.82, w * 0.2, h * 0.2);
+
+    // fluffy body
+    ctx.fillStyle = '#4a90e2';
+    ctx.beginPath();
+    ctx.ellipse(cx, y + h * 0.62, w * 0.58, h * 0.36, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#5ea0f0';
+    const tufts = [[-0.42, -0.08], [0.42, -0.08], [0, -0.3], [-0.5, 0.22], [0.5, 0.22]];
+    for (const [dx, dy] of tufts) {
+      ctx.beginPath();
+      ctx.arc(cx + dx * w, y + h * 0.62 + dy * h, w * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // tail
+    ctx.fillStyle = '#5ea0f0';
+    ctx.beginPath();
+    ctx.arc(x - facing * w * 0.05 + (facing > 0 ? 0 : w), y + h * 0.55, w * 0.14, 0, Math.PI * 2);
+    ctx.fill();
+
+    // neck
+    ctx.fillStyle = '#4a90e2';
+    ctx.beginPath();
+    ctx.ellipse(cx + facing * w * 0.05, y + h * 0.18, w * 0.24, h * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // head
+    const headCx = cx + facing * w * 0.14;
+    const headCy = y - h * 0.02;
+    ctx.beginPath();
+    ctx.arc(headCx, headCy, w * 0.44, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ears
+    ctx.fillStyle = '#3a78c9';
+    ctx.beginPath();
+    ctx.ellipse(headCx - w * 0.3, headCy - h * 0.3, w * 0.13, h * 0.2, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(headCx + w * 0.3, headCy - h * 0.3, w * 0.13, h * 0.2, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#dceeff';
+    ctx.beginPath();
+    ctx.ellipse(headCx - w * 0.3, headCy - h * 0.3, w * 0.06, h * 0.1, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(headCx + w * 0.3, headCy - h * 0.3, w * 0.06, h * 0.1, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // muzzle
+    ctx.fillStyle = '#eaf4ff';
+    ctx.beginPath();
+    ctx.ellipse(headCx + facing * w * 0.18, headCy + h * 0.08, w * 0.26, h * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // blush
+    ctx.fillStyle = 'rgba(255,150,180,0.55)';
+    ctx.beginPath();
+    ctx.arc(headCx - facing * w * 0.18, headCy + h * 0.1, w * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+
+    // eyes
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.arc(headCx + facing * w * 0.02, headCy - h * 0.06, w * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(headCx + facing * w * 0.32, headCy - h * 0.04, w * 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(headCx + facing * w * 0.02 - facing * 1, headCy - h * 0.09, w * 0.035, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(headCx + facing * w * 0.32 - facing * 1, headCy - h * 0.07, w * 0.03, 0, Math.PI * 2);
+    ctx.fill();
+
+    // nose
+    ctx.fillStyle = '#2a2a2a';
+    ctx.beginPath();
+    ctx.ellipse(headCx + facing * w * 0.4, headCy + h * 0.08, w * 0.055, h * 0.04, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
   function draw() {
     drawBackground();
     ctx.save();
@@ -290,14 +386,7 @@
     ctx.closePath();
     ctx.fill();
 
-    if (!player.dead) {
-      ctx.fillStyle = '#e60000';
-      ctx.fillRect(player.x, player.y, player.w, player.h * 0.5);
-      ctx.fillStyle = '#0000cd';
-      ctx.fillRect(player.x, player.y + player.h * 0.5, player.w, player.h * 0.5);
-      ctx.fillStyle = '#ffcc99';
-      ctx.fillRect(player.facing > 0 ? player.x + player.w - 10 : player.x, player.y + 4, 10, 10);
-    }
+    if (!player.dead) drawAlpaca();
 
     ctx.restore();
 
