@@ -421,7 +421,11 @@
   });
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; touchState.left = touchState.right = touchState.jump = false; });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { for (const k in keys) keys[k] = false; if (state === STATE.PLAYING) togglePause(true); }
+    if (document.hidden) {
+      for (const k in keys) keys[k] = false;
+      touchState.left = touchState.right = touchState.jump = false;
+      if (state === STATE.PLAYING) togglePause(true);
+    }
   });
 
   function bindHold(el, onDown, onUp) {
@@ -683,6 +687,7 @@
     vx: 0, vy: 0, onGround: false, facing: 1,
     invuln: 0, shielded: false, star: 0,
     animTimer: 0, animFrame: 0,
+    ridingPlatform: null,
   };
   let jumpHeldPrev = false;
   let coyoteFrames = 0;
@@ -699,7 +704,7 @@
   function resetPlayer() {
     player.x = level.currentSpawnX; player.y = GROUND_Y - 40;
     player.vx = 0; player.vy = 0; player.invuln = 60;
-    jumpHeldPrev = false; coyoteFrames = 0;
+    jumpHeldPrev = false; coyoteFrames = 0; player.ridingPlatform = null;
     camX = 0;
   }
 
@@ -749,7 +754,7 @@
       state = STATE.GAMEOVER;
       Audio1.stopMusic();
       Audio1.gameover();
-      announce('Game Over! Final score ' + score + '. Press R to restart.');
+      announce('Game Over! Final score ' + score + '. Press R, Space, Enter, or click to restart.');
     } else {
       resetPlayer();
       announce('Ouch! Lives remaining: ' + lives);
@@ -783,14 +788,12 @@
   if (save.muted) { Audio1.setMuted(true); btnMute.setAttribute('aria-pressed', 'true'); btnMute.textContent = 'Unmute (M)'; }
 
   function toggleContrast() {
-    const on = !document.body.classList.contains('highContrast');
-    document.body.classList.toggle('highContrast', on);
-    save.highContrast = on;
+    save.highContrast = !save.highContrast;
     persistSave();
-    btnContrast.setAttribute('aria-pressed', String(on));
+    btnContrast.setAttribute('aria-pressed', String(save.highContrast));
   }
   btnContrast.addEventListener('click', toggleContrast);
-  if (save.highContrast) { document.body.classList.add('highContrast'); btnContrast.setAttribute('aria-pressed', 'true'); }
+  if (save.highContrast) btnContrast.setAttribute('aria-pressed', 'true');
 
   function toggleMotion() {
     const on = !save.reduceMotion;
@@ -849,32 +852,35 @@
     player.vy += diff.gravity;
     if (player.vy > 18) player.vy = 18;
 
-    // moving platforms - update position before this frame's collision pass
+    // captured before any movement this frame - used by the stomp-vs-side-hit
+    // heuristic below so it's correct regardless of fall speed
+    const preMoveY = player.y;
+
+    // Moving platforms - update position before this frame's collision pass,
+    // and carry the player along if they were standing on one last frame
+    // (real velocity inheritance, not just overlap-resolution, so a
+    // descending/sliding platform can't outrun the player riding it).
     for (const p of level.platforms) {
       if (!p.mover) continue;
+      const prevMoverX = p.x, prevMoverY = p.y;
       p.movePhase += dt * p.mover.speed;
       if (p.mover.axis === 'x') p.x = p.mover.baseX + Math.sin(p.movePhase) * p.mover.range;
       else p.y = p.mover.baseY + Math.sin(p.movePhase) * p.mover.range;
-    }
-
-    // --- resolve X axis (only counts as a wall hit if the player already
-    // vertically overlapped the platform before moving - keeps landings on
-    // a platform's corner from incorrectly snapping sideways) ---
-    const frameStartY = player.y;
-    player.x += player.vx;
-    player.x = Math.max(0, Math.min(level.width - player.w, player.x));
-    for (const p of level.platforms) {
-      if (rectsOverlap(player, p)) {
-        const wasVerticallyClear = frameStartY < p.y + p.h && frameStartY + player.h > p.y;
-        if (wasVerticallyClear) {
-          if (player.vx > 0) { player.x = p.x - player.w; player.vx = 0; }
-          else if (player.vx < 0) { player.x = p.x + p.w; player.vx = 0; }
-        }
+      if (player.ridingPlatform === p) {
+        player.x += p.x - prevMoverX;
+        player.y += p.y - prevMoverY;
       }
     }
 
-    // --- resolve Y axis ---
+    // --- resolve Y axis first, then X (landing on top takes priority over a
+    // same-frame horizontal collision at a platform's edge). An earlier
+    // "wasVerticallyClear" guard here was found to be dead code - it always
+    // evaluated true because it re-tested the same Y value rectsOverlap had
+    // just used, so it never actually changed behavior. Resolving Y before X
+    // fixes the corner case for real: after landing, the player's Y no
+    // longer overlaps the platform enough to also trigger a sideways push. ---
     player.onGround = false;
+    player.ridingPlatform = null;
     player.y += player.vy;
     for (const p of level.platforms) {
       if (rectsOverlap(player, p)) {
@@ -882,6 +888,7 @@
           player.y = p.y - player.h;
           player.vy = 0;
           player.onGround = true;
+          player.ridingPlatform = p;
           if (Math.random() < 0.15) spawnParticles(player.x + player.w / 2, player.y + player.h, 2, '#c8c8c8', { life: 0.2, speed: 0.5, size: 2 });
         } else if (player.vy < 0) {
           player.y = p.y + p.h;
@@ -891,6 +898,15 @@
     }
     if (player.onGround) coyoteFrames = 6;
     else if (coyoteFrames > 0) coyoteFrames--;
+
+    player.x += player.vx;
+    player.x = Math.max(0, Math.min(level.width - player.w, player.x));
+    for (const p of level.platforms) {
+      if (rectsOverlap(player, p)) {
+        if (player.vx > 0) { player.x = p.x - player.w; player.vx = 0; }
+        else if (player.vx < 0) { player.x = p.x + p.w; player.vx = 0; }
+      }
+    }
 
     if (player.invuln > 0) player.invuln--;
     if (player.star > 0) player.star--;
@@ -943,8 +959,11 @@
     // hazards (spikes) - always damaging, not stompable
     for (const hz of level.hazards) {
       if (rectsOverlap(player, hz)) {
-        if (player.star > 0) continue;
-        if (player.shielded) { player.shielded = false; player.invuln = 60; levelHitTaken = true; addShake(4); continue; }
+        if (player.star > 0) continue; // invincible - ignore all hazards this frame
+        // once the shield is consumed, stop checking remaining hazards this
+        // frame - otherwise overlapping two hazards at once could consume
+        // the shield AND still cost a life in the same tick
+        if (player.shielded) { player.shielded = false; player.invuln = 60; levelHitTaken = true; addShake(4); break; }
         loseLife();
         return;
       }
@@ -967,7 +986,7 @@
         // use this frame's starting Y (not a fixed pixel threshold) so a fast
         // fall can't be misjudged as a side hit just because vy is large
         const stompable = en.type !== 'spiky';
-        const stomped = stompable && player.vy > 0 && (frameStartY + player.h) <= en.y + 10;
+        const stomped = stompable && player.vy > 0 && (preMoveY + player.h) <= en.y + 10;
         const isBoss = en.type === 'boss';
         if (player.star > 0) {
           en.alive = false;
@@ -1020,7 +1039,7 @@
         state = STATE.COMPLETE;
         Audio1.stopMusic();
         Audio1.win();
-        announce('You beat all levels!' + bonus + ' Final score: ' + score + '. Press R to play again.');
+        announce('You beat all levels!' + bonus + ' Final score: ' + score + '. Press R, Space, Enter, or click to play again.');
       }
     }
 
@@ -1366,9 +1385,9 @@
     } else if (state === STATE.LEVEL_COMPLETE) {
       drawOverlayBox(['LEVEL ' + (levelIndex + 1) + ' COMPLETE!', 'Score: ' + score, 'Press Enter for next level']);
     } else if (state === STATE.GAMEOVER) {
-      drawOverlayBox(['GAME OVER', 'Score: ' + score, 'Press R to restart']);
+      drawOverlayBox(['GAME OVER', 'Score: ' + score, 'Press R / Space / Enter or click to restart']);
     } else if (state === STATE.COMPLETE) {
-      drawOverlayBox(['YOU WIN!', 'Final score: ' + score, 'Press R to play again']);
+      drawOverlayBox(['YOU WIN!', 'Final score: ' + score, 'Press R / Space / Enter or click to play again']);
     }
 
     ctx.restore();
