@@ -126,6 +126,7 @@
     <span class="stat">Lives: <span id="lives">3</span></span>
     <span class="stat">Level: <span id="levelNum">1</span>/<span id="levelTotal">3</span></span>
     <span class="stat">Best: <span id="best">0</span></span>
+    <span class="stat" id="statusEffects" aria-live="polite"></span>
   </div>
   <div id="canvasWrap">
     <canvas id="game" width="800" height="400" tabindex="0" role="img" aria-label="Game viewport. Use arrow keys or A/D to move, Space to jump, P to pause."></canvas>
@@ -167,6 +168,7 @@
   const levelNumEl = document.getElementById('levelNum');
   const levelTotalEl = document.getElementById('levelTotal');
   const bestEl = document.getElementById('best');
+  const statusEl = document.getElementById('statusEffects');
   const msgEl = document.getElementById('msg');
   const announcer = document.getElementById('liveAnnouncer');
   const btnPause = document.getElementById('btnPause');
@@ -274,17 +276,25 @@
       [659, 784, 1047].forEach((f, i) => tone(f, i * 0.1, 0.15, 'square', 0.18));
     }
 
-    const MELODY = [262, 294, 330, 294, 262, 0, 330, 349, 392, 349, 330, 294, 262, 0, 0, 0];
-    function startMusic() {
+    const MELODIES = [
+      [262, 294, 330, 294, 262, 0, 330, 349, 392, 349, 330, 294, 262, 0, 0, 0],
+      [294, 330, 349, 392, 349, 330, 294, 0, 349, 392, 440, 392, 349, 330, 294, 0],
+      [220, 262, 294, 330, 294, 262, 220, 0, 294, 330, 349, 392, 349, 330, 294, 0],
+    ];
+    let currentMelody = MELODIES[0];
+    function startMusic(levelIdx) {
       stopMusic();
+      const idx = levelIdx || 0;
+      currentMelody = MELODIES[idx % MELODIES.length];
       musicStep = 0;
+      const tempo = 220 - idx * 12; // slightly faster pace each level for rising tension
       musicTimer = setInterval(() => {
         const ac = ctxReady();
         if (!ac || muted) return;
-        const note = MELODY[musicStep % MELODY.length];
+        const note = currentMelody[musicStep % currentMelody.length];
         if (note > 0) tone(note, 0, 0.18, 'triangle', 0.05);
         musicStep++;
-      }, 220);
+      }, tempo);
     }
     function stopMusic() {
       if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
@@ -356,7 +366,10 @@
     if (e.code === 'KeyM') toggleMute();
     if (e.code === 'KeyC') toggleContrast();
     if (e.code === 'KeyR') { if (state === STATE.GAMEOVER || state === STATE.COMPLETE) startNewGame(); }
-    if (e.code === 'Enter' || e.code === 'Space') { if (state === STATE.START) beginPlaying(); }
+    if (e.code === 'Enter' || e.code === 'Space') {
+      if (state === STATE.START) beginPlaying();
+      else if (state === STATE.LEVEL_COMPLETE) advanceLevel();
+    }
   });
   window.addEventListener('keyup', e => { keys[e.code] = false; });
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; touchState.left = touchState.right = touchState.jump = false; });
@@ -374,7 +387,12 @@
   }
   bindHold(document.getElementById('padLeft'), () => touchState.left = true, () => touchState.left = false);
   bindHold(document.getElementById('padRight'), () => touchState.right = true, () => touchState.right = false);
-  bindHold(document.getElementById('padJump'), () => touchState.jump = true, () => touchState.jump = false);
+  bindHold(document.getElementById('padJump'), () => {
+    touchState.jump = true;
+    if (state === STATE.START) beginPlaying();
+    else if (state === STATE.LEVEL_COMPLETE) advanceLevel();
+    else if (state === STATE.GAMEOVER || state === STATE.COMPLETE) startNewGame();
+  }, () => touchState.jump = false);
 
   function isLeft() { return keys['ArrowLeft'] || keys['KeyA'] || touchState.left; }
   function isRight() { return keys['ArrowRight'] || keys['KeyD'] || touchState.right; }
@@ -400,6 +418,12 @@
   // ---------------------------------------------------------------------
   // Level definitions (3 levels, increasing difficulty & verticality)
   // ---------------------------------------------------------------------
+  const PALETTE = {
+    normal: { ground: '#8b4513', grass: '#3a9d23', coin: '#ffd700', coinStroke: '#b8860b', goomba: '#8b4513', goombaBelly: '#5a2e0c', bat: '#4a2e83', batWing: '#2c1a52', batEye: '#ff4040', spike: '#888888', flagPole: '#555555', flagCloth: '#e60000', shield: '#00c8ff', star: '#ffea00', checkpointOff: '#888888', checkpointOn: '#3a9d23' },
+    access: { ground: '#5c3a00', grass: '#0d7a1f', coin: '#ffe14d', coinStroke: '#8a5a00', goomba: '#7a3b00', goombaBelly: '#3d1e00', bat: '#7a1fa2', batWing: '#4a1268', batEye: '#ff2020', spike: '#e6e6e6', flagPole: '#111111', flagCloth: '#ff0000', shield: '#00e5ff', star: '#fff200', checkpointOff: '#e6e6e6', checkpointOn: '#0d7a1f' },
+  };
+  function pal(name) { return (save.highContrast ? PALETTE.access : PALETTE.normal)[name]; }
+
   function levelDefs() {
     return [
       // Level 1: introductory, gentle
@@ -467,6 +491,7 @@
           { type: 'bat', x: 2050, y: 220, dir: 1, minX: 2000, maxX: 2280, baseY: 220 },
           { type: 'goomba', x: 2900, y: GROUND_Y - 28, dir: 1, minX: 2850, maxX: 3550 },
           { type: 'bat', x: 3100, y: 180, dir: -1, minX: 2900, maxX: 3400, baseY: 180 },
+          { type: 'spiky', x: 3300, y: GROUND_Y - 28, dir: 1, minX: 3200, maxX: 3500 },
         ],
         hazards: [
           { x: 940, y: GROUND_Y - 20, w: 40, h: 20 },
@@ -475,6 +500,7 @@
         powerups: [ { x: 1670, y: 150, kind: 'star' }, { x: 2510, y: 160, kind: 'shield' } ],
         flagX: 3500,
         spawnX: 50,
+        checkpointX: 1900,
       },
       // Level 3: gauntlet, tight platforming, more hazards & enemies
       {
@@ -519,6 +545,8 @@
           { type: 'bat', x: 2800, y: 200, dir: -1, minX: 2650, maxX: 3050, baseY: 200 },
           { type: 'goomba', x: 3740, y: GROUND_Y - 28, dir: 1, minX: 3720, maxX: 3980 },
           { type: 'bat', x: 3900, y: 210, dir: -1, minX: 3750, maxX: 3980, baseY: 210 },
+          { type: 'spiky', x: 2700, y: GROUND_Y - 28, dir: 1, minX: 2650, maxX: 3050 },
+          { type: 'spiky', x: 1350, y: GROUND_Y - 28, dir: -1, minX: 1300, maxX: 1650 },
         ],
         hazards: [
           { x: 660, y: GROUND_Y - 20, w: 40, h: 20 },
@@ -530,12 +558,15 @@
         powerups: [ { x: 1660, y: 160, kind: 'star' }, { x: 2910, y: 150, kind: 'shield' } ],
         flagX: 3900,
         spawnX: 50,
+        checkpointX: 2050,
       },
     ];
   }
 
+  const ALL_LEVEL_DEFS = levelDefs();
+
   function instantiateLevel(idx) {
-    const def = levelDefs()[idx];
+    const def = ALL_LEVEL_DEFS[idx];
     return {
       width: def.width,
       theme: def.theme,
@@ -545,11 +576,14 @@
       hazards: def.hazards.map(h => ({...h})),
       powerups: def.powerups.map(p => ({...p, w: 24, h: 24, collected: false})),
       flag: { x: def.flagX, y: GROUND_Y - 200, w: 20, h: 200 },
+      checkpoint: def.checkpointX != null ? { x: def.checkpointX, y: GROUND_Y - 90, w: 18, h: 90, reached: false } : null,
       spawnX: def.spawnX,
+      currentSpawnX: def.spawnX,
+      totalCoins: def.coins.length,
     };
   }
 
-  const LEVELS = levelDefs();
+  const LEVELS = ALL_LEVEL_DEFS;
   levelTotalEl.textContent = LEVELS.length;
 
   // ---------------------------------------------------------------------
@@ -569,17 +603,22 @@
     invuln: 0, shielded: false, star: 0,
     animTimer: 0, animFrame: 0,
   };
+  let jumpHeldPrev = false;
+  let coyoteFrames = 0;
 
   let score = 0;
   let coinCount = 0;
   let lives = diff.lives;
   let camX = 0;
+  let levelStartCoinCount = 0;
+  let levelHitTaken = false;
 
   bestEl.textContent = save.bestScore;
 
   function resetPlayer() {
-    player.x = level.spawnX; player.y = GROUND_Y - 40;
+    player.x = level.currentSpawnX; player.y = GROUND_Y - 40;
     player.vx = 0; player.vy = 0; player.invuln = 60;
+    jumpHeldPrev = false; coyoteFrames = 0;
     camX = 0;
   }
 
@@ -587,6 +626,8 @@
     levelIndex = idx;
     level = instantiateLevel(idx);
     levelNumEl.textContent = idx + 1;
+    levelStartCoinCount = coinCount;
+    levelHitTaken = false;
     resetPlayer();
   }
 
@@ -600,17 +641,24 @@
     loadLevel(0);
     state = STATE.PLAYING;
     announce('Go! Arrow keys / A-D to move, Space to jump. Stomp goombas, dodge spikes, grab coins, reach the flag!');
-    Audio1.startMusic();
+    Audio1.startMusic(levelIndex);
   }
 
   function beginPlaying() {
     state = STATE.PLAYING;
-    Audio1.startMusic();
+    Audio1.startMusic(levelIndex);
     announce('Go! Arrow keys / A-D to move, Space to jump. Stomp goombas, dodge spikes, grab coins, reach the flag!');
+  }
+
+  function advanceLevel() {
+    loadLevel(levelIndex + 1);
+    state = STATE.PLAYING;
+    Audio1.startMusic(levelIndex);
   }
 
   function loseLife() {
     if (player.invuln > 0) return;
+    levelHitTaken = true;
     lives--;
     Audio1.hurt();
     addShake(8);
@@ -655,6 +703,7 @@
   btnContrast.addEventListener('click', toggleContrast);
   if (save.highContrast) { document.body.classList.add('highContrast'); btnContrast.setAttribute('aria-pressed', 'true'); }
 
+  difficultySel.title = 'Difficulty applies when starting a new game (disabled during play)';
   difficultySel.addEventListener('change', () => {
     save.difficulty = difficultySel.value;
     persistSave();
@@ -664,6 +713,8 @@
     Audio1.unlock();
     canvas.focus();
     if (state === STATE.START) beginPlaying();
+    else if (state === STATE.LEVEL_COMPLETE) advanceLevel();
+    else if (state === STATE.GAMEOVER || state === STATE.COMPLETE) startNewGame();
   });
 
   // ---------------------------------------------------------------------
@@ -674,28 +725,40 @@
   let lastTime = null;
 
   function stepPhysics(dt) {
-    const speed = 4;
-    if (isLeft()) { player.vx = -speed; player.facing = -1; }
-    else if (isRight()) { player.vx = speed; player.facing = 1; }
-    else { player.vx = 0; }
+    const maxSpeed = 4, accel = 0.7, friction = 0.6;
+    if (isLeft()) { player.vx = Math.max(player.vx - accel, -maxSpeed); player.facing = -1; }
+    else if (isRight()) { player.vx = Math.min(player.vx + accel, maxSpeed); player.facing = 1; }
+    else if (player.vx > 0) { player.vx = Math.max(0, player.vx - friction); }
+    else if (player.vx < 0) { player.vx = Math.min(0, player.vx + friction); }
 
-    if (isJumpPressed() && player.onGround) {
+    // edge-triggered jump (no auto-bunny-hop from holding the key) with a
+    // short coyote window so leaving a ledge doesn't feel unforgivingly strict
+    const jumpNow = isJumpPressed();
+    if (jumpNow && !jumpHeldPrev && coyoteFrames > 0) {
       player.vy = -12;
       player.onGround = false;
+      coyoteFrames = 0;
       Audio1.jump();
       spawnParticles(player.x + player.w / 2, player.y + player.h, 4, '#ffffff', { life: 0.25, speed: 1, upBias: 0.5, size: 2 });
     }
+    jumpHeldPrev = jumpNow;
 
     player.vy += diff.gravity;
     if (player.vy > 18) player.vy = 18;
 
-    // --- resolve X axis ---
+    // --- resolve X axis (only counts as a wall hit if the player already
+    // vertically overlapped the platform before moving - keeps landings on
+    // a platform's corner from incorrectly snapping sideways) ---
+    const prevY = player.y;
     player.x += player.vx;
     player.x = Math.max(0, Math.min(level.width - player.w, player.x));
     for (const p of level.platforms) {
       if (rectsOverlap(player, p)) {
-        if (player.vx > 0) player.x = p.x - player.w;
-        else if (player.vx < 0) player.x = p.x + p.w;
+        const wasVerticallyClear = prevY < p.y + p.h && prevY + player.h > p.y;
+        if (wasVerticallyClear) {
+          if (player.vx > 0) { player.x = p.x - player.w; player.vx = 0; }
+          else if (player.vx < 0) { player.x = p.x + p.w; player.vx = 0; }
+        }
       }
     }
 
@@ -715,9 +778,12 @@
         }
       }
     }
+    if (player.onGround) coyoteFrames = 6;
+    else if (coyoteFrames > 0) coyoteFrames--;
 
     if (player.invuln > 0) player.invuln--;
     if (player.star > 0) player.star--;
+    statusEl.textContent = (player.shielded ? ' Shield active.' : '') + (player.star > 0 ? ' Star power: ' + Math.ceil(player.star / 60) + 's' : '');
 
     if (player.y > CANVAS_H + 150) {
       loseLife();
@@ -739,8 +805,16 @@
         coinCount++;
         score += 50;
         Audio1.coin();
-        spawnParticles(coin.x + coin.w / 2, coin.y + coin.h / 2, 8, '#ffd700', { life: 0.35, speed: 2 });
+        spawnParticles(coin.x + coin.w / 2, coin.y + coin.h / 2, 8, pal('coin'), { life: 0.35, speed: 2 });
       }
+    }
+
+    // checkpoint
+    if (level.checkpoint && !level.checkpoint.reached && rectsOverlap(player, level.checkpoint)) {
+      level.checkpoint.reached = true;
+      level.currentSpawnX = level.checkpoint.x;
+      spawnParticles(level.checkpoint.x + level.checkpoint.w / 2, level.checkpoint.y + 20, 10, pal('checkpointOn'), { life: 0.4, speed: 2 });
+      announce('Checkpoint reached!');
     }
 
     // powerups
@@ -759,7 +833,7 @@
     for (const hz of level.hazards) {
       if (rectsOverlap(player, hz)) {
         if (player.star > 0) continue;
-        if (player.shielded) { player.shielded = false; player.invuln = 60; addShake(4); continue; }
+        if (player.shielded) { player.shielded = false; player.invuln = 60; levelHitTaken = true; addShake(4); continue; }
         loseLife();
         return;
       }
@@ -768,31 +842,35 @@
     // enemies
     for (const en of level.enemies) {
       if (!en.alive) continue;
-      const baseSpeed = (en.type === 'bat' ? 1.8 : 1.5) * diff.enemySpeedMul;
+      const baseSpeed = (en.type === 'bat' ? 1.8 : en.type === 'spiky' ? 1.0 : 1.5) * diff.enemySpeedMul;
       en.x += en.dir * baseSpeed;
       if (en.x < en.minX || en.x > en.maxX) en.dir *= -1;
       if (en.type === 'bat') {
         en.phase += dt * 3;
         en.y = en.baseY + Math.sin(en.phase) * 30;
+      } else {
+        en.phase += dt * 6; // spin animation for spiky
       }
 
       if (rectsOverlap(player, en)) {
         const playerBottom = player.y + player.h;
-        const stomped = en.type !== 'bat_shield' && player.vy > 0 && (playerBottom - en.y) < 18;
+        const stompable = en.type !== 'spiky';
+        const stomped = stompable && player.vy > 0 && (playerBottom - en.y) < 18;
         if (player.star > 0) {
           en.alive = false;
           score += 100;
           Audio1.stomp();
-          spawnParticles(en.x + en.w / 2, en.y + en.h / 2, 10, '#ffea00', { life: 0.4, speed: 2 });
+          spawnParticles(en.x + en.w / 2, en.y + en.h / 2, 10, pal('star'), { life: 0.4, speed: 2 });
         } else if (stomped) {
           en.alive = false;
           player.vy = -8;
           score += 100;
           Audio1.stomp();
-          spawnParticles(en.x + en.w / 2, en.y + en.h / 2, 10, '#8b4513', { life: 0.4, speed: 2 });
+          spawnParticles(en.x + en.w / 2, en.y + en.h / 2, 10, pal('goomba'), { life: 0.4, speed: 2 });
         } else if (player.shielded) {
           player.shielded = false;
           player.invuln = 60;
+          levelHitTaken = true;
           addShake(4);
         } else {
           loseLife();
@@ -804,16 +882,20 @@
     // flag
     if (rectsOverlap(player, level.flag)) {
       score += 500;
+      const coinsThisLevel = coinCount - levelStartCoinCount;
+      let bonus = '';
+      if (level.totalCoins > 0 && coinsThisLevel >= level.totalCoins) { score += 200; bonus += ' All-coins bonus +200!'; }
+      if (!levelHitTaken) { score += 200; bonus += ' Flawless bonus +200!'; }
       if (levelIndex < LEVELS.length - 1) {
         state = STATE.LEVEL_COMPLETE;
         Audio1.levelComplete();
-        announce('Level ' + (levelIndex + 1) + ' complete! Score: ' + score + '. Press Enter for the next level.');
+        announce('Level ' + (levelIndex + 1) + ' complete!' + bonus + ' Score: ' + score + '. Press Enter for the next level.');
       } else {
         state = STATE.COMPLETE;
         Audio1.stopMusic();
         Audio1.win();
         if (score > save.bestScore) { save.bestScore = score; persistSave(); bestEl.textContent = save.bestScore; }
-        announce('You beat all levels! Final score: ' + score + '. Press R to play again.');
+        announce('You beat all levels!' + bonus + ' Final score: ' + score + '. Press R to play again.');
       }
     }
 
@@ -835,15 +917,10 @@
     if (state === STATE.PAUSED) {
       return;
     }
-    if (state === STATE.LEVEL_COMPLETE) {
-      if (keys['Enter'] || keys['Space'] || touchState.jump) {
-        loadLevel(levelIndex + 1);
-        state = STATE.PLAYING;
-      }
-      return;
-    }
-    if (state === STATE.GAMEOVER || state === STATE.COMPLETE) {
-      if (keys['KeyR']) startNewGame();
+    if (state === STATE.LEVEL_COMPLETE || state === STATE.GAMEOVER || state === STATE.COMPLETE) {
+      // advancing/restarting is handled by discrete input events (keydown/click/tap)
+      // below, never by polling held-key state here - that was the source of a bug
+      // where a still-held Space/R key instantly skipped these screens.
       return;
     }
     stepPhysics(dt);
@@ -919,12 +996,12 @@
 
   function drawEnemy(en) {
     if (en.type === 'bat') {
-      ctx.fillStyle = '#4a2e83';
+      ctx.fillStyle = pal('bat');
       ctx.beginPath();
       ctx.ellipse(en.x + en.w / 2, en.y + en.h / 2, en.w / 2, en.h / 2.6, 0, 0, Math.PI * 2);
       ctx.fill();
       const wingFlap = Math.sin(en.phase * 3) * 8;
-      ctx.fillStyle = '#2c1a52';
+      ctx.fillStyle = pal('batWing');
       ctx.beginPath();
       ctx.moveTo(en.x, en.y + en.h / 2);
       ctx.lineTo(en.x - 10, en.y + en.h / 2 - wingFlap);
@@ -935,11 +1012,33 @@
       ctx.lineTo(en.x + en.w + 10, en.y + en.h / 2 - wingFlap);
       ctx.lineTo(en.x + en.w, en.y + en.h / 2 + 6);
       ctx.fill();
-      ctx.fillStyle = '#ff4040';
+      ctx.fillStyle = pal('batEye');
       ctx.fillRect(en.x + 6, en.y + 8, 4, 4);
       ctx.fillRect(en.x + en.w - 10, en.y + 8, 4, 4);
+    } else if (en.type === 'spiky') {
+      const cx = en.x + en.w / 2, cy = en.y + en.h / 2, r = en.w / 2;
+      ctx.strokeStyle = pal('spike');
+      ctx.lineWidth = 3;
+      const spikeCount = 8;
+      for (let i = 0; i < spikeCount; i++) {
+        const a = (Math.PI * 2 / spikeCount) * i + (en.phase || 0);
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+        ctx.lineTo(cx + Math.cos(a) * (r + 7), cy + Math.sin(a) * (r + 7));
+        ctx.stroke();
+      }
+      ctx.lineWidth = 1;
+      ctx.fillStyle = '#2b2b2b';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#e63030';
+      ctx.beginPath();
+      ctx.arc(cx - 4, cy - 2, 2, 0, Math.PI * 2);
+      ctx.arc(cx + 4, cy - 2, 2, 0, Math.PI * 2);
+      ctx.fill();
     } else {
-      ctx.fillStyle = '#8b4513';
+      ctx.fillStyle = pal('goomba');
       ctx.fillRect(en.x, en.y, en.w, en.h);
       ctx.fillStyle = '#fff';
       ctx.fillRect(en.x + 4, en.y + 6, 6, 6);
@@ -947,13 +1046,13 @@
       ctx.fillStyle = '#000';
       ctx.fillRect(en.x + 6, en.y + 8, 2, 2);
       ctx.fillRect(en.x + en.w - 8, en.y + 8, 2, 2);
-      ctx.fillStyle = '#5a2e0c';
+      ctx.fillStyle = pal('goombaBelly');
       ctx.fillRect(en.x, en.y + en.h - 6, en.w, 6);
     }
   }
 
   function drawHazard(hz) {
-    ctx.fillStyle = '#888';
+    ctx.fillStyle = pal('spike');
     const spikes = Math.floor(hz.w / 10);
     for (let i = 0; i < spikes; i++) {
       ctx.beginPath();
@@ -965,11 +1064,22 @@
     }
   }
 
+  function drawCheckpoint(cp) {
+    ctx.fillStyle = cp.reached ? pal('checkpointOn') : pal('checkpointOff');
+    ctx.fillRect(cp.x, cp.y, 4, cp.h);
+    ctx.beginPath();
+    ctx.moveTo(cp.x + 4, cp.y);
+    ctx.lineTo(cp.x + 22, cp.y + 10);
+    ctx.lineTo(cp.x + 4, cp.y + 20);
+    ctx.closePath();
+    ctx.fill();
+  }
+
   function drawPowerup(pu) {
     ctx.save();
     ctx.translate(pu.x + pu.w / 2, pu.y + pu.h / 2);
     if (pu.kind === 'star') {
-      ctx.fillStyle = '#ffea00';
+      ctx.fillStyle = pal('star');
       ctx.strokeStyle = '#b8860b';
       const spikes = 5, outerR = pu.w / 2, innerR = outerR / 2.4;
       ctx.beginPath();
@@ -982,7 +1092,7 @@
       ctx.fill();
       ctx.stroke();
     } else {
-      ctx.fillStyle = '#00c8ff';
+      ctx.fillStyle = pal('shield');
       ctx.beginPath();
       ctx.arc(0, 0, pu.w / 2, 0, Math.PI * 2);
       ctx.fill();
@@ -998,23 +1108,23 @@
   }
 
   function drawWorld() {
-    ctx.fillStyle = '#8b4513';
     for (const p of level.platforms) {
-      ctx.fillStyle = '#8b4513';
+      ctx.fillStyle = pal('ground');
       ctx.fillRect(p.x, p.y, p.w, p.h);
-      ctx.fillStyle = '#3a9d23';
+      ctx.fillStyle = pal('grass');
       ctx.fillRect(p.x, p.y, p.w, 8);
     }
 
     for (const hz of level.hazards) drawHazard(hz);
+    if (level.checkpoint) drawCheckpoint(level.checkpoint);
 
-    ctx.fillStyle = '#ffd700';
+    ctx.fillStyle = pal('coin');
     for (const coin of level.coins) {
       if (coin.collected) continue;
       ctx.beginPath();
       ctx.arc(coin.x + coin.w / 2, coin.y + coin.h / 2, coin.w / 2, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#b8860b';
+      ctx.strokeStyle = pal('coinStroke');
       ctx.stroke();
     }
 
@@ -1026,9 +1136,9 @@
       if (en.alive) drawEnemy(en);
     }
 
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = pal('flagPole');
     ctx.fillRect(level.flag.x, level.flag.y, 6, level.flag.h);
-    ctx.fillStyle = '#e60000';
+    ctx.fillStyle = pal('flagCloth');
     ctx.beginPath();
     ctx.moveTo(level.flag.x + 6, level.flag.y);
     ctx.lineTo(level.flag.x + 40, level.flag.y + 15);
@@ -1053,6 +1163,7 @@
   }
 
   function draw() {
+    difficultySel.disabled = (state === STATE.PLAYING || state === STATE.PAUSED || state === STATE.LEVEL_COMPLETE);
     ctx.save();
     const sx = shake ? (Math.random() - 0.5) * shake : 0;
     const sy = shake ? (Math.random() - 0.5) * shake : 0;
@@ -1065,7 +1176,7 @@
     ctx.restore();
 
     if (state === STATE.START) {
-      drawOverlayBox(['SUPER MAHSA BROS', 'Arrow keys / A-D to move, Space to jump', 'Stomp goombas, dodge spikes, grab coins', 'Press Enter/Space or click to start']);
+      drawOverlayBox(['SUPER MAHSA BROS', 'Arrow keys / A-D to move, Space to jump', 'Stomp goombas, dodge spikes & spiky balls', 'Grab coins, hit checkpoints, reach the flag', 'Press Enter/Space or click to start']);
     } else if (state === STATE.PAUSED) {
       drawOverlayBox(['PAUSED', 'Press P to resume']);
     } else if (state === STATE.LEVEL_COMPLETE) {
