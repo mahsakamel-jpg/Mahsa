@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Super Mahsa Bros</title>
 <style>
   :root {
@@ -114,7 +114,9 @@
     clip: rect(0,0,0,0);
     white-space: nowrap; border: 0;
   }
-  .highContrast canvas { filter: contrast(1.3) saturate(1.4); }
+  /* High Contrast mode swaps the actual draw palette (see PALETTE.access in
+     the script) rather than relying on a CSS filter, which crushed dark
+     tones and didn't reliably help colorblind players distinguish objects. */
 </style>
 </head>
 <body>
@@ -136,6 +138,7 @@
     <button id="btnPause" aria-pressed="false">Pause (P)</button>
     <button id="btnMute" aria-pressed="false">Mute (M)</button>
     <button id="btnContrast" aria-pressed="false">High Contrast (C)</button>
+    <button id="btnMotion" aria-pressed="false">Reduce Motion (V)</button>
     <button id="btnTouch" aria-pressed="false">Show Touch Controls</button>
     <label for="difficulty" class="sr-only">Difficulty</label>
     <select id="difficulty" aria-label="Difficulty">
@@ -174,6 +177,7 @@
   const btnPause = document.getElementById('btnPause');
   const btnMute = document.getElementById('btnMute');
   const btnContrast = document.getElementById('btnContrast');
+  const btnMotion = document.getElementById('btnMotion');
   const btnTouch = document.getElementById('btnTouch');
   const touchControls = document.getElementById('touchControls');
   const difficultySel = document.getElementById('difficulty');
@@ -201,11 +205,12 @@
   function loadSave() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return { bestScore: 0, difficulty: 'normal', muted: false, highContrast: false };
+      const defaults = { bestScore: 0, difficulty: 'normal', muted: false, highContrast: false, reduceMotion: false, playerName: '' };
+      if (!raw) return defaults;
       const parsed = JSON.parse(raw);
-      return Object.assign({ bestScore: 0, difficulty: 'normal', muted: false, highContrast: false }, parsed);
+      return Object.assign(defaults, parsed);
     } catch (e) {
-      return { bestScore: 0, difficulty: 'normal', muted: false, highContrast: false };
+      return { bestScore: 0, difficulty: 'normal', muted: false, highContrast: false, reduceMotion: false, playerName: '' };
     }
   }
 
@@ -313,6 +318,7 @@
   let particles = [];
   function spawnParticles(x, y, count, color, opts) {
     opts = opts || {};
+    if (save.reduceMotion) count = Math.max(1, Math.floor(count / 3));
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = (opts.speed || 2) + Math.random() * (opts.speedVar || 2);
@@ -349,7 +355,7 @@
   // Screen shake
   // ---------------------------------------------------------------------
   let shake = 0;
-  function addShake(amount) { shake = Math.min(12, shake + amount); }
+  function addShake(amount) { if (save.reduceMotion) return; shake = Math.min(12, shake + amount); }
 
   // ---------------------------------------------------------------------
   // Input (keyboard + touch)
@@ -365,13 +371,18 @@
     if (e.code === 'KeyP' || e.code === 'Escape') togglePause();
     if (e.code === 'KeyM') toggleMute();
     if (e.code === 'KeyC') toggleContrast();
+    if (e.code === 'KeyV') toggleMotion();
     if (e.code === 'KeyR') { if (state === STATE.GAMEOVER || state === STATE.COMPLETE) startNewGame(); }
-    if (e.code === 'Enter' || e.code === 'Space') {
-      if (state === STATE.START) beginPlaying();
-      else if (state === STATE.LEVEL_COMPLETE) advanceLevel();
+    if (e.code === 'Enter' || e.code === 'Space') handleConfirmAction();
+  });
+  window.addEventListener('keyup', e => {
+    keys[e.code] = false;
+    // release-to-shorten-hop: cutting upward velocity on early release gives
+    // variable jump height instead of every jump being the same fixed arc
+    if ((e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') && player.vy < -4) {
+      player.vy *= 0.45;
     }
   });
-  window.addEventListener('keyup', e => { keys[e.code] = false; });
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; touchState.left = touchState.right = touchState.jump = false; });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { for (const k in keys) keys[k] = false; if (state === STATE.PLAYING) togglePause(true); }
@@ -389,10 +400,11 @@
   bindHold(document.getElementById('padRight'), () => touchState.right = true, () => touchState.right = false);
   bindHold(document.getElementById('padJump'), () => {
     touchState.jump = true;
-    if (state === STATE.START) beginPlaying();
-    else if (state === STATE.LEVEL_COMPLETE) advanceLevel();
-    else if (state === STATE.GAMEOVER || state === STATE.COMPLETE) startNewGame();
-  }, () => touchState.jump = false);
+    handleConfirmAction();
+  }, () => {
+    touchState.jump = false;
+    if (player.vy < -4) player.vy *= 0.45;
+  });
 
   function isLeft() { return keys['ArrowLeft'] || keys['KeyA'] || touchState.left; }
   function isRight() { return keys['ArrowRight'] || keys['KeyD'] || touchState.right; }
@@ -420,7 +432,10 @@
   // ---------------------------------------------------------------------
   const PALETTE = {
     normal: { ground: '#8b4513', grass: '#3a9d23', coin: '#ffd700', coinStroke: '#b8860b', goomba: '#8b4513', goombaBelly: '#5a2e0c', bat: '#4a2e83', batWing: '#2c1a52', batEye: '#ff4040', spike: '#888888', flagPole: '#555555', flagCloth: '#e60000', shield: '#00c8ff', star: '#ffea00', checkpointOff: '#888888', checkpointOn: '#3a9d23' },
-    access: { ground: '#5c3a00', grass: '#0d7a1f', coin: '#ffe14d', coinStroke: '#8a5a00', goomba: '#7a3b00', goombaBelly: '#3d1e00', bat: '#7a1fa2', batWing: '#4a1268', batEye: '#ff2020', spike: '#e6e6e6', flagPole: '#111111', flagCloth: '#ff0000', shield: '#00e5ff', star: '#fff200', checkpointOff: '#e6e6e6', checkpointOn: '#0d7a1f' },
+    // Deliberately large hue/lightness jumps (not just a filter) so the two
+    // palettes read as genuinely different, not a subtle tint - verified via
+    // reviewer feedback that a near-identical "accessible" palette is useless.
+    access: { ground: '#5c3a00', grass: '#39ff14', coin: '#fff200', coinStroke: '#000000', goomba: '#ff8c00', goombaBelly: '#803d00', bat: '#ff00ff', batWing: '#990099', batEye: '#00ffff', spike: '#ffffff', flagPole: '#ffffff', flagCloth: '#ff0000', shield: '#00ffff', star: '#fff200', checkpointOff: '#ffffff', checkpointOn: '#39ff14' },
   };
   function pal(name) { return (save.highContrast ? PALETTE.access : PALETTE.normal)[name]; }
 
@@ -547,6 +562,7 @@
           { type: 'bat', x: 3900, y: 210, dir: -1, minX: 3750, maxX: 3980, baseY: 210 },
           { type: 'spiky', x: 2700, y: GROUND_Y - 28, dir: 1, minX: 2650, maxX: 3050 },
           { type: 'spiky', x: 1350, y: GROUND_Y - 28, dir: -1, minX: 1300, maxX: 1650 },
+          { type: 'boss', x: 3500, y: GROUND_Y - 56, w: 56, h: 56, dir: 1, minX: 3470, maxX: 3590, hp: 3 },
         ],
         hazards: [
           { x: 660, y: GROUND_Y - 20, w: 40, h: 20 },
@@ -572,7 +588,7 @@
       theme: def.theme,
       platforms: def.platforms.map(p => ({...p})),
       coins: def.coins.map(c => ({...c, w: 20, h: 20, collected: false})),
-      enemies: def.enemies.map(e => ({...e, w: 28, h: 28, alive: true, phase: Math.random() * Math.PI * 2})),
+      enemies: def.enemies.map(e => ({...e, w: e.w || 28, h: e.h || 28, alive: true, phase: Math.random() * Math.PI * 2})),
       hazards: def.hazards.map(h => ({...h})),
       powerups: def.powerups.map(p => ({...p, w: 24, h: 24, collected: false})),
       flag: { x: def.flagX, y: GROUND_Y - 200, w: 20, h: 200 },
@@ -668,7 +684,6 @@
       state = STATE.GAMEOVER;
       Audio1.stopMusic();
       Audio1.gameover();
-      if (score > save.bestScore) { save.bestScore = score; persistSave(); bestEl.textContent = save.bestScore; }
       announce('Game Over! Final score ' + score + '. Press R to restart.');
     } else {
       resetPlayer();
@@ -677,8 +692,17 @@
   }
 
   function togglePause(forceOn) {
-    if (state === STATE.PLAYING) { state = STATE.PAUSED; btnPause.setAttribute('aria-pressed', 'true'); announce('Paused. Press P to resume.'); }
-    else if (state === STATE.PAUSED && !forceOn) { state = STATE.PLAYING; btnPause.setAttribute('aria-pressed', 'false'); announce('Resumed.'); }
+    if (state === STATE.PLAYING) {
+      state = STATE.PAUSED;
+      Audio1.stopMusic();
+      btnPause.setAttribute('aria-pressed', 'true');
+      announce('Paused. Press P to resume.');
+    } else if (state === STATE.PAUSED && !forceOn) {
+      state = STATE.PLAYING;
+      Audio1.startMusic(levelIndex);
+      btnPause.setAttribute('aria-pressed', 'false');
+      announce('Resumed.');
+    }
   }
   btnPause.addEventListener('click', () => togglePause());
 
@@ -703,6 +727,22 @@
   btnContrast.addEventListener('click', toggleContrast);
   if (save.highContrast) { document.body.classList.add('highContrast'); btnContrast.setAttribute('aria-pressed', 'true'); }
 
+  function toggleMotion() {
+    const on = !save.reduceMotion;
+    save.reduceMotion = on;
+    persistSave();
+    btnMotion.setAttribute('aria-pressed', String(on));
+    if (on) shake = 0;
+  }
+  btnMotion.addEventListener('click', toggleMotion);
+  if (save.reduceMotion) btnMotion.setAttribute('aria-pressed', 'true');
+
+  function handleConfirmAction() {
+    if (state === STATE.START) beginPlaying();
+    else if (state === STATE.LEVEL_COMPLETE) advanceLevel();
+    else if (state === STATE.GAMEOVER || state === STATE.COMPLETE) startNewGame();
+  }
+
   difficultySel.title = 'Difficulty applies when starting a new game (disabled during play)';
   difficultySel.addEventListener('change', () => {
     save.difficulty = difficultySel.value;
@@ -712,9 +752,7 @@
   canvas.addEventListener('click', () => {
     Audio1.unlock();
     canvas.focus();
-    if (state === STATE.START) beginPlaying();
-    else if (state === STATE.LEVEL_COMPLETE) advanceLevel();
-    else if (state === STATE.GAMEOVER || state === STATE.COMPLETE) startNewGame();
+    handleConfirmAction();
   });
 
   // ---------------------------------------------------------------------
@@ -749,12 +787,12 @@
     // --- resolve X axis (only counts as a wall hit if the player already
     // vertically overlapped the platform before moving - keeps landings on
     // a platform's corner from incorrectly snapping sideways) ---
-    const prevY = player.y;
+    const frameStartY = player.y;
     player.x += player.vx;
     player.x = Math.max(0, Math.min(level.width - player.w, player.x));
     for (const p of level.platforms) {
       if (rectsOverlap(player, p)) {
-        const wasVerticallyClear = prevY < p.y + p.h && prevY + player.h > p.y;
+        const wasVerticallyClear = frameStartY < p.y + p.h && frameStartY + player.h > p.y;
         if (wasVerticallyClear) {
           if (player.vx > 0) { player.x = p.x - player.w; player.vx = 0; }
           else if (player.vx < 0) { player.x = p.x + p.w; player.vx = 0; }
@@ -842,7 +880,7 @@
     // enemies
     for (const en of level.enemies) {
       if (!en.alive) continue;
-      const baseSpeed = (en.type === 'bat' ? 1.8 : en.type === 'spiky' ? 1.0 : 1.5) * diff.enemySpeedMul;
+      const baseSpeed = (en.type === 'bat' ? 1.8 : en.type === 'spiky' ? 1.0 : en.type === 'boss' ? 0.6 : 1.5) * diff.enemySpeedMul;
       en.x += en.dir * baseSpeed;
       if (en.x < en.minX || en.x > en.maxX) en.dir *= -1;
       if (en.type === 'bat') {
@@ -853,20 +891,28 @@
       }
 
       if (rectsOverlap(player, en)) {
-        const playerBottom = player.y + player.h;
+        // use this frame's starting Y (not a fixed pixel threshold) so a fast
+        // fall can't be misjudged as a side hit just because vy is large
         const stompable = en.type !== 'spiky';
-        const stomped = stompable && player.vy > 0 && (playerBottom - en.y) < 18;
+        const stomped = stompable && player.vy > 0 && (frameStartY + player.h) <= en.y + 10;
+        const isBoss = en.type === 'boss';
         if (player.star > 0) {
           en.alive = false;
-          score += 100;
+          score += isBoss ? 300 : 100;
           Audio1.stomp();
           spawnParticles(en.x + en.w / 2, en.y + en.h / 2, 10, pal('star'), { life: 0.4, speed: 2 });
         } else if (stomped) {
-          en.alive = false;
           player.vy = -8;
-          score += 100;
           Audio1.stomp();
           spawnParticles(en.x + en.w / 2, en.y + en.h / 2, 10, pal('goomba'), { life: 0.4, speed: 2 });
+          if (isBoss) {
+            en.hp = (en.hp || 1) - 1;
+            score += 50;
+            if (en.hp <= 0) { en.alive = false; score += 300; announce('Boss defeated!'); }
+          } else {
+            en.alive = false;
+            score += 100;
+          }
         } else if (player.shielded) {
           player.shielded = false;
           player.invuln = 60;
@@ -894,16 +940,18 @@
         state = STATE.COMPLETE;
         Audio1.stopMusic();
         Audio1.win();
-        if (score > save.bestScore) { save.bestScore = score; persistSave(); bestEl.textContent = save.bestScore; }
         announce('You beat all levels!' + bonus + ' Final score: ' + score + '. Press R to play again.');
       }
     }
 
     camX = Math.max(0, Math.min(level.width - CANVAS_W, player.x - CANVAS_W / 2));
 
+    if (score > save.bestScore) { save.bestScore = score; persistSave(); }
+
     scoreEl.textContent = score;
     coinsEl.textContent = coinCount;
     livesEl.textContent = lives;
+    bestEl.textContent = save.bestScore;
   }
 
   function update(dt) {
@@ -1037,6 +1085,35 @@
       ctx.arc(cx - 4, cy - 2, 2, 0, Math.PI * 2);
       ctx.arc(cx + 4, cy - 2, 2, 0, Math.PI * 2);
       ctx.fill();
+    } else if (en.type === 'boss') {
+      ctx.fillStyle = pal('goomba');
+      ctx.fillRect(en.x, en.y, en.w, en.h);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(en.x + 8, en.y + 10, 10, 10);
+      ctx.fillRect(en.x + en.w - 18, en.y + 10, 10, 10);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(en.x + 11, en.y + 13, 4, 4);
+      ctx.fillRect(en.x + en.w - 15, en.y + 13, 4, 4);
+      ctx.fillStyle = pal('goombaBelly');
+      ctx.fillRect(en.x, en.y + en.h - 10, en.w, 10);
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      ctx.moveTo(en.x + 4, en.y);
+      ctx.lineTo(en.x + 4, en.y - 12);
+      ctx.lineTo(en.x + en.w * 0.3, en.y - 2);
+      ctx.lineTo(en.x + en.w * 0.5, en.y - 14);
+      ctx.lineTo(en.x + en.w * 0.7, en.y - 2);
+      ctx.lineTo(en.x + en.w - 4, en.y - 12);
+      ctx.lineTo(en.x + en.w - 4, en.y);
+      ctx.closePath();
+      ctx.fill();
+      const hp = en.hp != null ? en.hp : 1;
+      for (let i = 0; i < hp; i++) {
+        ctx.fillStyle = '#e60000';
+        ctx.beginPath();
+        ctx.arc(en.x + en.w / 2 - (hp - 1) * 7 + i * 14, en.y - 24, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
     } else {
       ctx.fillStyle = pal('goomba');
       ctx.fillRect(en.x, en.y, en.w, en.h);
