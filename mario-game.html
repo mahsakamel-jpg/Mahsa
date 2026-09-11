@@ -66,9 +66,9 @@
     <button id="startBtn" aria-label="Start Game"></button>
   </div>
   <div id="gameArea">
-    <div id="hud">Score: <span id="score">0</span> &nbsp; Coins: <span id="coins">0</span> &nbsp; Lives: <span id="lives">3</span></div>
+    <div id="hud">Level <span id="levelNum">1</span>/10 &nbsp; Score: <span id="score">0</span> &nbsp; Coins: <span id="coins">0</span> &nbsp; Lives: <span id="lives">3</span></div>
     <canvas id="game" width="800" height="400"></canvas>
-    <div id="msg">Arrow keys / A-D to move, Space or Up to jump. Stomp goombas, grab coins, reach the flag!</div>
+    <div id="msg">Arrow keys / A-D to move, Space or Up to jump. Stomp goombas, grab coins, reach the flag! 10 levels await...</div>
   </div>
 </div>
 <script>
@@ -112,18 +112,11 @@
   const scoreEl = document.getElementById('score');
   const coinsEl = document.getElementById('coins');
   const livesEl = document.getElementById('lives');
+  const levelNumEl = document.getElementById('levelNum');
   const msgEl = document.getElementById('msg');
 
   const GRAVITY = 0.6;
   const GROUND_Y = 360;
-  const WORLD_WIDTH = 3200;
-
-  const stars = Array.from({ length: 40 }, () => ({
-    x: Math.random() * (WORLD_WIDTH + 400),
-    y: Math.random() * 220,
-    r: Math.random() * 1.4 + 0.6,
-    a: Math.random() * 0.5 + 0.4,
-  }));
 
   const keys = {};
   window.addEventListener('keydown', e => {
@@ -139,35 +132,279 @@
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
 
-  function buildLevel() {
-    const platforms = [
-      { x: 0, y: GROUND_Y, w: 900, h: 40 },
-      { x: 980, y: GROUND_Y, w: 500, h: 40 },
-      { x: 1560, y: GROUND_Y, w: 700, h: 40 },
-      { x: 2340, y: GROUND_Y, w: 860, h: 40 },
-      { x: 300, y: 280, w: 100, h: 20 },
-      { x: 500, y: 220, w: 100, h: 20 },
-      { x: 1100, y: 260, w: 120, h: 20 },
-      { x: 1700, y: 260, w: 120, h: 20 },
-      { x: 1900, y: 200, w: 120, h: 20 },
-      { x: 2500, y: 260, w: 140, h: 20 },
-    ];
-    const coins = [
-      {x: 340, y: 240}, {x: 540, y: 180}, {x: 1140, y: 220},
-      {x: 1740, y: 220}, {x: 1940, y: 160}, {x: 2540, y: 220},
-      {x: 700, y: 320}, {x: 1400, y: 320}, {x: 2100, y: 320},
-    ].map(c => ({...c, w: 20, h: 20, collected: false}));
-    const enemies = [
-      { x: 500, y: GROUND_Y - 28, w: 28, h: 28, dir: -1, alive: true, minX: 400, maxX: 850 },
-      { x: 1200, y: GROUND_Y - 28, w: 28, h: 28, dir: 1, alive: true, minX: 1050, maxX: 1450 },
-      { x: 1900, y: GROUND_Y - 28, w: 28, h: 28, dir: -1, alive: true, minX: 1650, maxX: 2200 },
-      { x: 2600, y: GROUND_Y - 28, w: 28, h: 28, dir: 1, alive: true, minX: 2400, maxX: 3100 },
-    ];
-    const flag = { x: WORLD_WIDTH - 100, y: GROUND_Y - 200, w: 20, h: 200 };
-    return { platforms, coins, enemies, flag };
+  // Each level is plain data: ground/floating platforms (optionally oscillating
+  // via `move`), coins, patrolling enemies, and where the flag sits.
+  const LEVELS = [
+    { // 1 — Moonlit Meadow (intro)
+      name: 'Moonlit Meadow',
+      platforms: [
+        { x: 0, y: GROUND_Y, w: 900, h: 40 },
+        { x: 980, y: GROUND_Y, w: 700, h: 40 },
+        { x: 1760, y: GROUND_Y, w: 340, h: 40 },
+        { x: 300, y: 280, w: 100, h: 20 },
+        { x: 500, y: 220, w: 100, h: 20 },
+        { x: 1100, y: 260, w: 120, h: 20 },
+      ],
+      coins: [
+        { x: 340, y: 240 }, { x: 540, y: 180 }, { x: 1140, y: 220 },
+        { x: 700, y: 320 }, { x: 1720, y: 320 },
+      ],
+      enemies: [
+        { x: 500, y: GROUND_Y - 28, dir: -1, minX: 400, maxX: 850 },
+        { x: 1300, y: GROUND_Y - 28, dir: 1, minX: 1150, maxX: 1500 },
+      ],
+      flagX: 2050,
+      worldWidth: 2250,
+    },
+    { // 2 — Cloud Steps (staircase up, staircase down)
+      name: 'Cloud Steps',
+      platforms: [
+        { x: 0, y: GROUND_Y, w: 700, h: 40 },
+        { x: 810, y: GROUND_Y, w: 650, h: 40 },
+        { x: 1570, y: GROUND_Y, w: 950, h: 40 },
+        { x: 300, y: 300, w: 100, h: 20 },
+        { x: 430, y: 240, w: 100, h: 20 },
+        { x: 560, y: 180, w: 100, h: 20 },
+        { x: 1000, y: 260, w: 100, h: 20 },
+        { x: 1150, y: 320, w: 100, h: 20 },
+      ],
+      coins: [
+        { x: 340, y: 260 }, { x: 470, y: 200 }, { x: 600, y: 140 },
+        { x: 1040, y: 220 }, { x: 1190, y: 280 }, { x: 2000, y: 320 },
+      ],
+      enemies: [
+        { x: 900, y: GROUND_Y - 28, dir: 1, minX: 860, maxX: 1200 },
+        { x: 1800, y: GROUND_Y - 28, dir: -1, minX: 1650, maxX: 2100 },
+      ],
+      flagX: 2470,
+      worldWidth: 2670,
+    },
+    { // 3 — Chasm Crossing (pits bridged by small stepping-stones)
+      name: 'Chasm Crossing',
+      platforms: [
+        { x: 0, y: GROUND_Y, w: 500, h: 40 },
+        { x: 545, y: 320, w: 60, h: 16 },
+        { x: 620, y: GROUND_Y, w: 400, h: 40 },
+        { x: 1065, y: 300, w: 60, h: 16 },
+        { x: 1140, y: GROUND_Y, w: 450, h: 40 },
+        { x: 1615, y: 300, w: 60, h: 16 },
+        { x: 1710, y: GROUND_Y, w: 500, h: 40 },
+        { x: 2245, y: 310, w: 60, h: 16 },
+        { x: 2320, y: GROUND_Y, w: 480, h: 40 },
+      ],
+      coins: [
+        { x: 250, y: 320 }, { x: 575, y: 270 }, { x: 1095, y: 250 },
+        { x: 1645, y: 250 }, { x: 1900, y: 320 }, { x: 2275, y: 260 },
+      ],
+      enemies: [
+        { x: 800, y: GROUND_Y - 28, dir: 1, minX: 650, maxX: 1000 },
+        { x: 1900, y: GROUND_Y - 28, dir: -1, minX: 1750, maxX: 2200 },
+      ],
+      flagX: 2750,
+      worldWidth: 2950,
+    },
+    { // 4 — Elevator Cliffs (first moving platforms)
+      name: 'Elevator Cliffs',
+      platforms: [
+        { x: 0, y: GROUND_Y, w: 700, h: 40 },
+        { x: 820, y: 260, w: 100, h: 20, move: { axis: 'y', base: 260, range: 70, speed: 0.02 } },
+        { x: 1000, y: 260, w: 100, h: 20, move: { axis: 'y', base: 260, range: 70, speed: 0.024 } },
+        { x: 1150, y: GROUND_Y, w: 650, h: 40 },
+        { x: 1950, y: 240, w: 110, h: 20, move: { axis: 'y', base: 240, range: 80, speed: 0.018 } },
+        { x: 2200, y: GROUND_Y, w: 780, h: 40 },
+      ],
+      coins: [
+        { x: 300, y: 320 }, { x: 870, y: 180 }, { x: 1400, y: 320 },
+        { x: 2000, y: 150 }, { x: 2500, y: 320 },
+      ],
+      enemies: [
+        { x: 1300, y: GROUND_Y - 28, dir: 1, minX: 1150, maxX: 1700 },
+        { x: 2500, y: GROUND_Y - 28, dir: -1, minX: 2300, maxX: 2800 },
+      ],
+      flagX: 2930,
+      worldWidth: 3130,
+    },
+    { // 5 — Sky Garden Ascent (tall staircase to a bonus plateau)
+      name: 'Sky Garden Ascent',
+      platforms: [
+        { x: 0, y: GROUND_Y, w: 900, h: 40 },
+        { x: 300, y: 300, w: 90, h: 20 },
+        { x: 430, y: 240, w: 90, h: 20 },
+        { x: 560, y: 180, w: 90, h: 20 },
+        { x: 690, y: 140, w: 220, h: 20 },
+        { x: 1050, y: 260, w: 110, h: 20 },
+        { x: 1250, y: 300, w: 110, h: 20 },
+        { x: 1000, y: GROUND_Y, w: 1200, h: 40 },
+        { x: 2325, y: 300, w: 90, h: 20, move: { axis: 'x', base: 2325, range: 105, speed: 0.015 } },
+        { x: 2450, y: GROUND_Y, w: 750, h: 40 },
+      ],
+      coins: [
+        { x: 720, y: 100 }, { x: 780, y: 100 }, { x: 840, y: 100 }, { x: 900, y: 100 },
+        { x: 1550, y: 320 }, { x: 2700, y: 320 },
+      ],
+      enemies: [
+        { x: 1500, y: GROUND_Y - 28, dir: 1, minX: 1050, maxX: 1900 },
+        { x: 2600, y: GROUND_Y - 28, dir: -1, minX: 2470, maxX: 2900 },
+      ],
+      flagX: 3150,
+      worldWidth: 3350,
+    },
+    { // 6 — Goomba Gauntlet (mostly flat, dense enemy timing challenge)
+      name: 'Goomba Gauntlet',
+      platforms: [
+        { x: 0, y: GROUND_Y, w: 1400, h: 40 },
+        { x: 1480, y: GROUND_Y, w: 1500, h: 40 },
+        { x: 600, y: 300, w: 80, h: 16 },
+        { x: 1700, y: 300, w: 80, h: 16 },
+        { x: 2300, y: 300, w: 80, h: 16 },
+      ],
+      coins: [
+        { x: 300, y: 320 }, { x: 640, y: 260 }, { x: 900, y: 320 },
+        { x: 1740, y: 260 }, { x: 2100, y: 320 }, { x: 2340, y: 260 }, { x: 2600, y: 320 },
+      ],
+      enemies: [
+        { x: 500, y: GROUND_Y - 28, dir: 1, minX: 400, maxX: 650 },
+        { x: 900, y: GROUND_Y - 28, dir: -1, minX: 800, maxX: 1050 },
+        { x: 1700, y: GROUND_Y - 28, dir: 1, minX: 1600, maxX: 1850 },
+        { x: 2100, y: GROUND_Y - 28, dir: -1, minX: 2000, maxX: 2250 },
+        { x: 2500, y: GROUND_Y - 28, dir: 1, minX: 2400, maxX: 2650 },
+      ],
+      flagX: 2930,
+      worldWidth: 3130,
+    },
+    { // 7 — Twin Elevators (paired, desynced moving platforms)
+      name: 'Twin Elevators',
+      platforms: [
+        { x: 0, y: GROUND_Y, w: 650, h: 40 },
+        { x: 760, y: 260, w: 90, h: 20, move: { axis: 'y', base: 260, range: 70, speed: 0.02 } },
+        { x: 930, y: 260, w: 90, h: 20, move: { axis: 'y', base: 260, range: 70, speed: 0.025 } },
+        { x: 1050, y: GROUND_Y, w: 900, h: 40 },
+        { x: 2060, y: 250, w: 90, h: 20, move: { axis: 'y', base: 250, range: 80, speed: 0.018 } },
+        { x: 2230, y: 250, w: 90, h: 20, move: { axis: 'y', base: 250, range: 80, speed: 0.022 } },
+        { x: 2350, y: GROUND_Y, w: 650, h: 40 },
+        { x: 3125, y: 300, w: 100, h: 20, move: { axis: 'x', base: 3125, range: 110, speed: 0.015 } },
+        { x: 3250, y: GROUND_Y, w: 140, h: 40 },
+      ],
+      coins: [
+        { x: 300, y: 320 }, { x: 805, y: 210 }, { x: 975, y: 210 },
+        { x: 1500, y: 320 }, { x: 2105, y: 200 }, { x: 2275, y: 200 }, { x: 2600, y: 320 },
+      ],
+      enemies: [
+        { x: 1400, y: GROUND_Y - 28, dir: 1, minX: 1100, maxX: 1900 },
+        { x: 2600, y: GROUND_Y - 28, dir: -1, minX: 2400, maxX: 2900 },
+      ],
+      flagX: 3340,
+      worldWidth: 3540,
+    },
+    { // 8 — Starlit Highwire (long floating chain, no safety net)
+      name: 'Starlit Highwire',
+      platforms: [
+        { x: 0, y: GROUND_Y, w: 400, h: 40 },
+        { x: 500, y: 300, w: 90, h: 20 },
+        { x: 700, y: 260, w: 90, h: 20 },
+        { x: 900, y: 300, w: 90, h: 20, move: { axis: 'y', base: 300, range: 40, speed: 0.02 } },
+        { x: 1100, y: 240, w: 90, h: 20 },
+        { x: 1300, y: 280, w: 90, h: 20, move: { axis: 'x', base: 1300, range: 60, speed: 0.02 } },
+        { x: 1500, y: 220, w: 90, h: 20 },
+        { x: 1700, y: 300, w: 90, h: 20 },
+        { x: 1900, y: 260, w: 90, h: 20, move: { axis: 'y', base: 260, range: 50, speed: 0.018 } },
+        { x: 2100, y: 300, w: 90, h: 20 },
+        { x: 2300, y: 240, w: 90, h: 20 },
+        { x: 2500, y: 300, w: 90, h: 20 },
+        { x: 2700, y: 260, w: 90, h: 20 },
+        { x: 2900, y: 320, w: 90, h: 20 },
+        { x: 3000, y: GROUND_Y, w: 400, h: 40 },
+      ],
+      coins: [
+        { x: 720, y: 220 }, { x: 1120, y: 200 }, { x: 1520, y: 180 },
+        { x: 1920, y: 220 }, { x: 2320, y: 200 }, { x: 2720, y: 220 },
+      ],
+      enemies: [
+        { x: 1100, y: 240 - 28, dir: 1, minX: 1100, maxX: 1160 },
+        { x: 1900, y: 260 - 28, dir: -1, minX: 1900, maxX: 1960 },
+        { x: 2500, y: 300 - 28, dir: 1, minX: 2500, maxX: 2560 },
+      ],
+      flagX: 3350,
+      worldWidth: 3550,
+    },
+    { // 9 — The Gauntlet's Peak (pits + gauntlet + staircase combined)
+      name: "The Gauntlet's Peak",
+      platforms: [
+        { x: 0, y: GROUND_Y, w: 600, h: 40 },
+        { x: 750, y: 280, w: 100, h: 20, move: { axis: 'y', base: 280, range: 70, speed: 0.02 } },
+        { x: 900, y: GROUND_Y, w: 700, h: 40 },
+        { x: 1775, y: 300, w: 100, h: 20, move: { axis: 'x', base: 1775, range: 110, speed: 0.018 } },
+        { x: 1950, y: GROUND_Y, w: 900, h: 40 },
+        { x: 2200, y: 300, w: 90, h: 20 },
+        { x: 2350, y: 240, w: 90, h: 20 },
+        { x: 2500, y: 200, w: 90, h: 20 },
+        { x: 3000, y: 270, w: 100, h: 20, move: { axis: 'y', base: 270, range: 80, speed: 0.022 } },
+        { x: 3150, y: GROUND_Y, w: 650, h: 40 },
+      ],
+      coins: [
+        { x: 300, y: 320 }, { x: 2500, y: 160 }, { x: 2570, y: 160 },
+        { x: 2640, y: 160 }, { x: 2710, y: 160 }, { x: 3450, y: 320 },
+      ],
+      enemies: [
+        { x: 1000, y: GROUND_Y - 28, dir: 1, minX: 900, maxX: 1150 },
+        { x: 1250, y: GROUND_Y - 28, dir: -1, minX: 1150, maxX: 1400 },
+        { x: 1450, y: GROUND_Y - 28, dir: 1, minX: 1400, maxX: 1580 },
+        { x: 2050, y: GROUND_Y - 28, dir: 1, minX: 1950, maxX: 2150 },
+        { x: 2700, y: GROUND_Y - 28, dir: -1, minX: 2600, maxX: 2830 },
+        { x: 3300, y: GROUND_Y - 28, dir: 1, minX: 3150, maxX: 3500 },
+      ],
+      flagX: 3750,
+      worldWidth: 3950,
+    },
+    { // 10 — Alpaca's Last Stand (finale: gauntlet + elevators + boss goomba)
+      name: "Alpaca's Last Stand",
+      platforms: [
+        { x: 0, y: GROUND_Y, w: 700, h: 40 },
+        { x: 875, y: 260, w: 100, h: 20, move: { axis: 'y', base: 260, range: 75, speed: 0.02 } },
+        { x: 1050, y: GROUND_Y, w: 750, h: 40 },
+        { x: 1975, y: 300, w: 100, h: 20, move: { axis: 'x', base: 1975, range: 120, speed: 0.017 } },
+        { x: 2150, y: GROUND_Y, w: 800, h: 40 },
+        { x: 2300, y: 300, w: 90, h: 20 },
+        { x: 2450, y: 240, w: 90, h: 20 },
+        { x: 2600, y: 190, w: 90, h: 20 },
+        { x: 3125, y: 270, w: 100, h: 20, move: { axis: 'y', base: 270, range: 85, speed: 0.021 } },
+        { x: 3300, y: GROUND_Y, w: 900, h: 40 },
+      ],
+      coins: [
+        { x: 300, y: 320 }, { x: 2600, y: 150 }, { x: 2670, y: 150 },
+        { x: 2740, y: 150 }, { x: 2810, y: 150 }, { x: 3450, y: 320 },
+      ],
+      enemies: [
+        { x: 1150, y: GROUND_Y - 28, dir: 1, minX: 1050, maxX: 1300 },
+        { x: 1400, y: GROUND_Y - 28, dir: -1, minX: 1300, maxX: 1550 },
+        { x: 1650, y: GROUND_Y - 28, dir: 1, minX: 1550, maxX: 1780 },
+        { x: 2250, y: GROUND_Y - 28, dir: 1, minX: 2150, maxX: 2400 },
+        { x: 2800, y: GROUND_Y - 28, dir: -1, minX: 2700, maxX: 2940 },
+        { x: 3400, y: GROUND_Y - 28, dir: 1, minX: 3300, maxX: 3500 },
+        { x: 3550, y: GROUND_Y - 28, dir: -1, minX: 3450, maxX: 3650 },
+        { x: 3950, y: GROUND_Y - 44, w: 44, h: 44, dir: -1, minX: 3800, maxX: 4100, hp: 3, boss: true },
+      ],
+      flagX: 4150,
+      worldWidth: 4350,
+    },
+  ];
+
+  function buildLevel(index) {
+    const def = JSON.parse(JSON.stringify(LEVELS[index]));
+    const coins = def.coins.map(c => ({ ...c, w: 20, h: 20, collected: false }));
+    const enemies = def.enemies.map(e => ({ w: 28, h: 28, alive: true, hp: 1, ...e }));
+    const flag = { x: def.flagX, y: GROUND_Y - 200, w: 20, h: 200 };
+    const stars = Array.from({ length: Math.round(def.worldWidth / 70) }, () => ({
+      x: Math.random() * (def.worldWidth + 400),
+      y: Math.random() * 220,
+      r: Math.random() * 1.4 + 0.6,
+      a: Math.random() * 0.5 + 0.4,
+    }));
+    return { name: def.name, platforms: def.platforms, coins, enemies, flag, worldWidth: def.worldWidth, stars, time: 0 };
   }
 
-  let level = buildLevel();
+  let currentLevelIndex = 0;
+  let level = buildLevel(currentLevelIndex);
 
   const player = {
     x: 50, y: GROUND_Y - 40, w: 28, h: 40,
@@ -179,7 +416,8 @@
   let coinCount = 0;
   let lives = 3;
   let camX = 0;
-  let won = false;
+  let levelComplete = false;
+  let finished = false;
   let gameOver = false;
 
   function resetPlayer() {
@@ -188,12 +426,18 @@
     camX = 0;
   }
 
-  function resetGame() {
-    level = buildLevel();
-    score = 0; coinCount = 0; lives = 3;
-    won = false; gameOver = false;
+  function loadLevel(index) {
+    level = buildLevel(index);
+    levelNumEl.textContent = index + 1;
     resetPlayer();
-    msgEl.textContent = 'Arrow keys / A-D to move, Space or Up to jump. Stomp goombas, grab coins, reach the flag!';
+  }
+
+  function resetGame() {
+    currentLevelIndex = 0;
+    score = 0; coinCount = 0; lives = 3;
+    levelComplete = false; gameOver = false; finished = false;
+    loadLevel(0);
+    msgEl.textContent = 'Arrow keys / A-D to move, Space or Up to jump. Stomp goombas, grab coins, reach the flag! 10 levels await...';
   }
 
   function loseLife() {
@@ -208,10 +452,34 @@
     }
   }
 
+  function nextLevel() {
+    currentLevelIndex++;
+    if (currentLevelIndex >= LEVELS.length) {
+      finished = true;
+      msgEl.textContent = 'You beat all 10 levels! Final score: ' + score + '. Press R to play again.';
+    } else {
+      loadLevel(currentLevelIndex);
+      levelComplete = false;
+      msgEl.textContent = 'Level ' + (currentLevelIndex + 1) + ': ' + level.name + ' — go!';
+    }
+  }
+
   function update() {
-    if (gameOver || won) {
+    if (gameOver || finished) {
       if (keys['KeyR']) resetGame();
       return;
+    }
+    if (levelComplete) {
+      if (keys['Space'] || keys['ArrowUp'] || keys['KeyW'] || keys['Enter']) nextLevel();
+      return;
+    }
+
+    level.time++;
+    for (const p of level.platforms) {
+      if (!p.move) continue;
+      const t = level.time * p.move.speed;
+      if (p.move.axis === 'x') p.x = p.move.base + Math.sin(t) * p.move.range;
+      else p.y = p.move.base + Math.sin(t) * p.move.range;
     }
 
     const speed = 4;
@@ -229,7 +497,7 @@
     if (player.vy > 18) player.vy = 18;
 
     player.x += player.vx;
-    player.x = Math.max(0, Math.min(WORLD_WIDTH - player.w, player.x));
+    player.x = Math.max(0, Math.min(level.worldWidth - player.w, player.x));
     player.onGround = false;
 
     for (const p of level.platforms) {
@@ -278,12 +546,21 @@
 
       if (rectsOverlap(player, en)) {
         const playerBottom = player.y + player.h;
-        const stomped = player.vy > 0 && (playerBottom - en.y) < 18;
+        const stomped = player.vy > 0 && (playerBottom - en.y) < en.h * 0.6;
         if (stomped) {
-          en.alive = false;
+          en.hp -= 1;
           player.vy = -8;
           score += 100;
           playSound('stomp');
+          if (en.hp <= 0) {
+            en.alive = false;
+            if (en.boss) {
+              score += 300;
+              msgEl.textContent = 'Boss defeated! Bonus +300!';
+            }
+          } else if (en.boss) {
+            msgEl.textContent = 'Boss hit! ' + en.hp + ' hit' + (en.hp === 1 ? '' : 's') + ' left...';
+          }
         } else {
           loseLife();
           return;
@@ -292,13 +569,18 @@
     }
 
     if (rectsOverlap(player, level.flag)) {
-      won = true;
       score += 500;
       playSound('win');
-      msgEl.textContent = 'You reached the flag! Score: ' + score + '. Press R to play again.';
+      if (currentLevelIndex >= LEVELS.length - 1) {
+        finished = true;
+        msgEl.textContent = 'You beat all 10 levels! Final score: ' + score + '. Press R to play again.';
+      } else {
+        levelComplete = true;
+        msgEl.textContent = 'Level ' + (currentLevelIndex + 1) + ' complete! Score: ' + score + '. Press Space/Up to continue.';
+      }
     }
 
-    camX = Math.max(0, Math.min(WORLD_WIDTH - canvas.width, player.x - canvas.width / 2));
+    camX = Math.max(0, Math.min(level.worldWidth - canvas.width, player.x - canvas.width / 2));
 
     scoreEl.textContent = score;
     coinsEl.textContent = coinCount;
@@ -314,7 +596,7 @@
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // stars (subtle parallax)
-    for (const s of stars) {
+    for (const s of level.stars) {
       const sx = s.x - camX * 0.15;
       if (sx < -10 || sx > canvas.width + 10) continue;
       ctx.fillStyle = `rgba(255,255,255,${s.a})`;
@@ -363,8 +645,12 @@
     const { x, y, w, h } = en;
     const cx = x + w / 2;
     ctx.save();
+    if (en.boss) {
+      ctx.shadowColor = 'rgba(220,60,40,0.7)';
+      ctx.shadowBlur = 14;
+    }
     // cap (mushroom body)
-    ctx.fillStyle = '#8b4513';
+    ctx.fillStyle = en.boss ? '#6b2f14' : '#8b4513';
     ctx.beginPath();
     ctx.moveTo(x + w * 0.06, y + h);
     ctx.quadraticCurveTo(x, y + h * 0.2, cx, y + h * 0.15);
@@ -374,6 +660,7 @@
     ctx.quadraticCurveTo(x + w * 0.15, y + h * 0.78, x + w * 0.06, y + h);
     ctx.closePath();
     ctx.fill();
+    ctx.shadowBlur = 0;
     // feet
     ctx.fillStyle = '#5a2e0c';
     ctx.beginPath();
@@ -394,6 +681,12 @@
     ctx.beginPath();
     ctx.arc(x + w * 0.7, y + h * 0.46, w * 0.06, 0, Math.PI * 2);
     ctx.fill();
+    if (en.boss) {
+      ctx.fillStyle = '#ffcf3d';
+      ctx.font = '700 12px "Baloo 2", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('HP ' + Math.max(en.hp, 0), cx, y - 8);
+    }
     ctx.restore();
   }
 
@@ -555,7 +848,7 @@
       ctx.shadowBlur = 16;
       ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2);
       ctx.shadowBlur = 0;
-    } else if (won) {
+    } else if (finished) {
       ctx.fillStyle = 'rgba(6,10,42,0.6)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#ffcf3d';
@@ -565,6 +858,18 @@
       ctx.shadowBlur = 16;
       ctx.fillText('YOU WIN!', canvas.width / 2, canvas.height / 2);
       ctx.shadowBlur = 0;
+    } else if (levelComplete) {
+      ctx.fillStyle = 'rgba(6,10,42,0.55)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffcf3d';
+      ctx.font = '800 30px "Baloo 2", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(255,207,61,0.7)';
+      ctx.shadowBlur = 16;
+      ctx.fillText('LEVEL ' + currentLevelIndex + ' COMPLETE!', canvas.width / 2, canvas.height / 2 - 14);
+      ctx.font = '700 16px "Baloo 2", sans-serif';
+      ctx.shadowBlur = 0;
+      ctx.fillText('Press Space / Up to continue', canvas.width / 2, canvas.height / 2 + 20);
     }
   }
 
