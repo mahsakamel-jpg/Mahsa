@@ -147,6 +147,14 @@
       <option value="hard">Hard</option>
     </select>
   </div>
+  <div class="btnRow">
+    <label for="remapLeft">Extra left key:</label>
+    <select id="remapLeft" aria-label="Extra left key"></select>
+    <label for="remapRight">Extra right key:</label>
+    <select id="remapRight" aria-label="Extra right key"></select>
+    <label for="remapJump">Extra jump key:</label>
+    <select id="remapJump" aria-label="Extra jump key"></select>
+  </div>
   <div id="touchControls">
     <div class="padGroup">
       <button class="padBtn" id="padLeft" aria-label="Move left">&#8592;</button>
@@ -205,12 +213,15 @@
   function loadSave() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      const defaults = { bestScore: 0, difficulty: 'normal', muted: false, highContrast: false, reduceMotion: false, playerName: '' };
+      const defaults = { bestScore: 0, difficulty: 'normal', muted: false, highContrast: false, reduceMotion: false, playerName: '', bindings: { left: '', right: '', jump: '' }, stars: {} };
       if (!raw) return defaults;
       const parsed = JSON.parse(raw);
-      return Object.assign(defaults, parsed);
+      const merged = Object.assign(defaults, parsed);
+      merged.bindings = Object.assign({ left: '', right: '', jump: '' }, parsed.bindings);
+      merged.stars = parsed.stars || {};
+      return merged;
     } catch (e) {
-      return { bestScore: 0, difficulty: 'normal', muted: false, highContrast: false, reduceMotion: false, playerName: '' };
+      return { bestScore: 0, difficulty: 'normal', muted: false, highContrast: false, reduceMotion: false, playerName: '', bindings: { left: '', right: '', jump: '' }, stars: {} };
     }
   }
 
@@ -286,18 +297,40 @@
       [294, 330, 349, 392, 349, 330, 294, 0, 349, 392, 440, 392, 349, 330, 294, 0],
       [220, 262, 294, 330, 294, 262, 220, 0, 294, 330, 349, 392, 349, 330, 294, 0],
     ];
+    const BASS_ROOTS = [131, 147, 110];
+
+    function kick(t) {
+      const ac = ctxReady();
+      if (!ac || muted) return;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(120, ac.currentTime + t);
+      osc.frequency.exponentialRampToValueAtTime(40, ac.currentTime + t + 0.1);
+      gain.gain.setValueAtTime(0.22, ac.currentTime + t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + t + 0.12);
+      osc.connect(gain).connect(ac.destination);
+      osc.start(ac.currentTime + t);
+      osc.stop(ac.currentTime + t + 0.14);
+    }
+
     let currentMelody = MELODIES[0];
+    let currentBassRoot = BASS_ROOTS[0];
     function startMusic(levelIdx) {
       stopMusic();
       const idx = levelIdx || 0;
       currentMelody = MELODIES[idx % MELODIES.length];
+      currentBassRoot = BASS_ROOTS[idx % BASS_ROOTS.length];
       musicStep = 0;
       const tempo = 220 - idx * 12; // slightly faster pace each level for rising tension
       musicTimer = setInterval(() => {
         const ac = ctxReady();
         if (!ac || muted) return;
-        const note = currentMelody[musicStep % currentMelody.length];
+        const step = musicStep % currentMelody.length;
+        const note = currentMelody[step];
         if (note > 0) tone(note, 0, 0.18, 'triangle', 0.05);
+        if (step % 4 === 0) tone(currentBassRoot, 0, 0.22, 'sawtooth', 0.06);
+        if (step % 8 === 0) kick(0);
         musicStep++;
       }, tempo);
     }
@@ -409,9 +442,32 @@
     if (!isJumpPressed() && player.vy < -4) player.vy *= 0.45;
   });
 
-  function isLeft() { return keys['ArrowLeft'] || keys['KeyA'] || touchState.left; }
-  function isRight() { return keys['ArrowRight'] || keys['KeyD'] || touchState.right; }
-  function isJumpPressed() { return keys['Space'] || keys['ArrowUp'] || keys['KeyW'] || touchState.jump; }
+  function isLeft() { return keys['ArrowLeft'] || keys['KeyA'] || touchState.left || (save.bindings.left && keys[save.bindings.left]); }
+  function isRight() { return keys['ArrowRight'] || keys['KeyD'] || touchState.right || (save.bindings.right && keys[save.bindings.right]); }
+  function isJumpPressed() { return keys['Space'] || keys['ArrowUp'] || keys['KeyW'] || touchState.jump || (save.bindings.jump && keys[save.bindings.jump]); }
+
+  const REMAP_OPTIONS = {
+    left: [['Default (Arrows / A)', ''], ['J', 'KeyJ'], ['Z', 'KeyZ'], [',', 'Comma']],
+    right: [['Default (Arrows / D)', ''], ['L', 'KeyL'], ['X', 'KeyX'], ['.', 'Period']],
+    jump: [['Default (Space / Up / W)', ''], ['K', 'KeyK'], [';', 'Semicolon'], ['/', 'Slash']],
+  };
+  function populateRemapSelect(elId, action) {
+    const sel = document.getElementById(elId);
+    REMAP_OPTIONS[action].forEach(([label, val]) => {
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = label;
+      sel.appendChild(opt);
+    });
+    sel.value = save.bindings[action] || '';
+    sel.addEventListener('change', () => {
+      save.bindings[action] = sel.value;
+      persistSave();
+    });
+  }
+  populateRemapSelect('remapLeft', 'left');
+  populateRemapSelect('remapRight', 'right');
+  populateRemapSelect('remapJump', 'jump');
 
   // auto-show touch controls on coarse pointers (phones/tablets)
   let touchControlsVisible = false;
@@ -459,11 +515,13 @@
           { x: 1700, y: 260, w: 120, h: 20 },
           { x: 1900, y: 200, w: 120, h: 20 },
           { x: 2500, y: 260, w: 140, h: 20 },
+          { x: 480, y: 130, w: 80, h: 20 }, // secret ledge - only reachable by jumping from the platform below
         ],
         coins: [
           {x: 340, y: 240}, {x: 540, y: 180}, {x: 1140, y: 220},
           {x: 1740, y: 220}, {x: 1940, y: 160}, {x: 2540, y: 220},
           {x: 700, y: 320}, {x: 1400, y: 320}, {x: 2100, y: 320},
+          {x: 500, y: 90}, {x: 535, y: 90}, // secret bonus coins on the hidden ledge
         ],
         enemies: [
           { type: 'goomba', x: 500, y: GROUND_Y - 28, dir: -1, minX: 400, maxX: 850 },
@@ -541,7 +599,7 @@
           { x: 600, y: 260, w: 80, h: 20 },
           { x: 900, y: 200, w: 80, h: 20 },
           { x: 1450, y: 260, w: 100, h: 20 },
-          { x: 1650, y: 200, w: 100, h: 20 },
+          { x: 1650, y: 200, w: 100, h: 20, mover: { axis: 'y', range: 50, speed: 1.2 } },
           { x: 1900, y: 260, w: 80, h: 20 },
           { x: 2180, y: 200, w: 80, h: 20 },
           { x: 2700, y: 250, w: 100, h: 20 },
@@ -589,7 +647,11 @@
     return {
       width: def.width,
       theme: def.theme,
-      platforms: def.platforms.map(p => ({...p})),
+      platforms: def.platforms.map(p => {
+        const clone = {...p};
+        if (p.mover) { clone.mover = {...p.mover, baseX: p.x, baseY: p.y}; clone.movePhase = 0; }
+        return clone;
+      }),
       coins: def.coins.map(c => ({...c, w: 20, h: 20, collected: false})),
       enemies: def.enemies.map(e => ({...e, w: e.w || 28, h: e.h || 28, alive: true, phase: Math.random() * Math.PI * 2})),
       hazards: def.hazards.map(h => ({...h})),
@@ -787,6 +849,14 @@
     player.vy += diff.gravity;
     if (player.vy > 18) player.vy = 18;
 
+    // moving platforms - update position before this frame's collision pass
+    for (const p of level.platforms) {
+      if (!p.mover) continue;
+      p.movePhase += dt * p.mover.speed;
+      if (p.mover.axis === 'x') p.x = p.mover.baseX + Math.sin(p.movePhase) * p.mover.range;
+      else p.y = p.mover.baseY + Math.sin(p.movePhase) * p.mover.range;
+    }
+
     // --- resolve X axis (only counts as a wall hit if the player already
     // vertically overlapped the platform before moving - keeps landings on
     // a platform's corner from incorrectly snapping sideways) ---
@@ -932,9 +1002,16 @@
     if (rectsOverlap(player, level.flag)) {
       score += 500;
       const coinsThisLevel = coinCount - levelStartCoinCount;
+      const gotAllCoins = level.totalCoins > 0 && coinsThisLevel >= level.totalCoins;
       let bonus = '';
-      if (level.totalCoins > 0 && coinsThisLevel >= level.totalCoins) { score += 200; bonus += ' All-coins bonus +200!'; }
+      if (gotAllCoins) { score += 200; bonus += ' All-coins bonus +200!'; }
       if (!levelHitTaken) { score += 200; bonus += ' Flawless bonus +200!'; }
+      let starsEarned = 1 + (gotAllCoins ? 1 : 0) + (!levelHitTaken ? 1 : 0);
+      const starsKey = diffKey + '-' + levelIndex;
+      if (!save.stars[starsKey] || save.stars[starsKey] < starsEarned) {
+        save.stars[starsKey] = starsEarned;
+        persistSave();
+      }
       if (levelIndex < LEVELS.length - 1) {
         state = STATE.LEVEL_COMPLETE;
         Audio1.levelComplete();
@@ -980,9 +1057,29 @@
   // ---------------------------------------------------------------------
   // Rendering
   // ---------------------------------------------------------------------
+  function shadeColor(hex, amt) {
+    const num = parseInt(hex.slice(1), 16);
+    let r = (num >> 16) + amt, g = ((num >> 8) & 0xff) + amt, b = (num & 0xff) + amt;
+    r = Math.max(0, Math.min(255, r)); g = Math.max(0, Math.min(255, g)); b = Math.max(0, Math.min(255, b));
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  }
+
   function drawBackground() {
-    ctx.fillStyle = level.theme;
+    const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+    grad.addColorStop(0, level.theme);
+    grad.addColorStop(1, shadeColor(level.theme, -45));
+    ctx.fillStyle = grad;
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+    // mid-ground hill silhouettes for a little parallax depth
+    ctx.fillStyle = shadeColor(level.theme, -25);
+    for (let i = 0; i < 4; i++) {
+      const hx = ((i * 300 - camX * 0.5) % (CANVAS_W + 300)) - 150;
+      ctx.beginPath();
+      ctx.ellipse(hx, CANVAS_H - 15, 160, 70, 0, Math.PI, 0, true);
+      ctx.fill();
+    }
+
     ctx.fillStyle = '#ffffff';
     for (let i = 0; i < 6; i++) {
       const cx = ((i * 400 - camX * 0.3) % (CANVAS_W + 200)) - 100;
@@ -1256,7 +1353,14 @@
     ctx.restore();
 
     if (state === STATE.START) {
-      drawOverlayBox(['SUPER MAHSA BROS', 'Arrow keys / A-D to move, Space to jump', 'Stomp goombas, dodge spikes & spiky balls', 'Grab coins, hit checkpoints, reach the flag', 'Press Enter/Space or click to start']);
+      {
+        const dk = difficultySel.value;
+        const starsLine = LEVELS.map((_, i) => {
+          const n = save.stars[dk + '-' + i] || 0;
+          return 'L' + (i + 1) + ':' + '★'.repeat(n) + '☆'.repeat(3 - n);
+        }).join('   ');
+        drawOverlayBox(['SUPER MAHSA BROS', 'Arrow keys / A-D to move, Space to jump', 'Stomp goombas, dodge spikes & spiky balls', 'Grab coins, hit checkpoints, reach the flag', starsLine, 'Press Enter/Space or click to start']);
+      }
     } else if (state === STATE.PAUSED) {
       drawOverlayBox(['PAUSED', 'Press P to resume']);
     } else if (state === STATE.LEVEL_COMPLETE) {
