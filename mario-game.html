@@ -378,8 +378,11 @@
   window.addEventListener('keyup', e => {
     keys[e.code] = false;
     // release-to-shorten-hop: cutting upward velocity on early release gives
-    // variable jump height instead of every jump being the same fixed arc
-    if ((e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') && player.vy < -4) {
+    // variable jump height instead of every jump being the same fixed arc.
+    // Only cut when no jump input remains held (keyboard has 3 aliases plus
+    // touch), so releasing one of several simultaneously-held jump keys
+    // doesn't truncate a jump the player is still holding another way.
+    if ((e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') && !isJumpPressed() && player.vy < -4) {
       player.vy *= 0.45;
     }
   });
@@ -403,7 +406,7 @@
     handleConfirmAction();
   }, () => {
     touchState.jump = false;
-    if (player.vy < -4) player.vy *= 0.45;
+    if (!isJumpPressed() && player.vy < -4) player.vy *= 0.45;
   });
 
   function isLeft() { return keys['ArrowLeft'] || keys['KeyA'] || touchState.left; }
