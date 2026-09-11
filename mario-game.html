@@ -127,7 +127,7 @@
     <span class="stat">Coins: <span id="coins">0</span></span>
     <span class="stat">Lives: <span id="lives">3</span></span>
     <span class="stat">Level: <span id="levelNum">1</span>/<span id="levelTotal">3</span></span>
-    <span class="stat">Best: <span id="best">0</span></span>
+    <span class="stat">Best (<span id="bestDiff">Normal</span>): <span id="best">0</span></span>
     <span class="stat" id="statusEffects" aria-live="polite"></span>
   </div>
   <div id="canvasWrap">
@@ -179,6 +179,7 @@
   const levelNumEl = document.getElementById('levelNum');
   const levelTotalEl = document.getElementById('levelTotal');
   const bestEl = document.getElementById('best');
+  const bestDiffEl = document.getElementById('bestDiff');
   const statusEl = document.getElementById('statusEffects');
   const msgEl = document.getElementById('msg');
   const announcer = document.getElementById('liveAnnouncer');
@@ -211,17 +212,23 @@
   const STORAGE_KEY = 'superMahsaBros.save.v1';
 
   function loadSave() {
+    const bareDefaults = () => ({ bestScores: { easy: 0, normal: 0, hard: 0 }, difficulty: 'normal', muted: false, highContrast: false, reduceMotion: false, playerName: '', bindings: { left: '', right: '', jump: '' }, stars: {} });
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      const defaults = { bestScore: 0, difficulty: 'normal', muted: false, highContrast: false, reduceMotion: false, playerName: '', bindings: { left: '', right: '', jump: '' }, stars: {} };
+      const defaults = bareDefaults();
       if (!raw) return defaults;
       const parsed = JSON.parse(raw);
       const merged = Object.assign(defaults, parsed);
       merged.bindings = Object.assign({ left: '', right: '', jump: '' }, parsed.bindings);
       merged.stars = parsed.stars || {};
+      // best score used to be a single global number (pre-per-difficulty
+      // tracking) - migrate it into the "normal" slot instead of losing it
+      merged.bestScores = Object.assign({ easy: 0, normal: 0, hard: 0 }, parsed.bestScores);
+      if (parsed.bestScore && !parsed.bestScores) merged.bestScores.normal = parsed.bestScore;
+      delete merged.bestScore;
       return merged;
     } catch (e) {
-      return { bestScore: 0, difficulty: 'normal', muted: false, highContrast: false, reduceMotion: false, playerName: '', bindings: { left: '', right: '', jump: '' }, stars: {} };
+      return bareDefaults();
     }
   }
 
@@ -580,7 +587,7 @@
         powerups: [ { x: 1670, y: 150, kind: 'star' }, { x: 2510, y: 160, kind: 'shield' } ],
         flagX: 3500,
         spawnX: 50,
-        checkpointX: 1900,
+        checkpointX: 2050, // must sit over solid ground (2000-2300 platform) - x:1900 fell in the 1860-2000 pit
       },
       // Level 3: gauntlet, tight platforming, more hazards & enemies
       {
@@ -639,7 +646,7 @@
         powerups: [ { x: 1660, y: 160, kind: 'star' }, { x: 2910, y: 150, kind: 'shield' } ],
         flagX: 3900,
         spawnX: 50,
-        checkpointX: 2050,
+        checkpointX: 2650, // must sit over solid ground (2600-3100 platform) - x:2050 fell in the 1980-2080 pit
       },
     ];
   }
@@ -699,7 +706,12 @@
   let levelStartCoinCount = 0;
   let levelHitTaken = false;
 
-  bestEl.textContent = save.bestScore;
+  function updateBestDisplay(forKey) {
+    const key = forKey || difficultySel.value;
+    bestEl.textContent = save.bestScores[key] || 0;
+    bestDiffEl.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+  }
+  updateBestDisplay();
 
   function resetPlayer() {
     player.x = level.currentSpawnX; player.y = GROUND_Y - 40;
@@ -815,6 +827,7 @@
   difficultySel.addEventListener('change', () => {
     save.difficulty = difficultySel.value;
     persistSave();
+    updateBestDisplay();
   });
 
   canvas.addEventListener('click', () => {
@@ -1045,12 +1058,12 @@
 
     camX = Math.max(0, Math.min(level.width - CANVAS_W, player.x - CANVAS_W / 2));
 
-    if (score > save.bestScore) { save.bestScore = score; persistSave(); }
+    if (score > save.bestScores[diffKey]) { save.bestScores[diffKey] = score; persistSave(); }
 
     scoreEl.textContent = score;
     coinsEl.textContent = coinCount;
     livesEl.textContent = lives;
-    bestEl.textContent = save.bestScore;
+    updateBestDisplay(diffKey);
   }
 
   function update(dt) {
@@ -1347,7 +1360,7 @@
   }
 
   function drawOverlayBox(lines) {
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillStyle = 'rgba(0,0,0,0.82)';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
