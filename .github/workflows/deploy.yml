@@ -34,3 +34,19 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
           script: ${{ vars.POST_DEPLOY_CMD }}
+
+      - name: List server directories
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            echo "--- home dir ---"
+            pwd
+            ls -la ~
+            echo "--- /srv/www ---"
+            ls -la /srv/www 2>/dev/null || echo "no access to /srv/www"
+            echo "--- deploy path ---"
+            ls -la "${{ secrets.DEPLOY_PATH }}"
