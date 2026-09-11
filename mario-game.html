@@ -4,35 +4,37 @@
 <meta charset="UTF-8">
 <title>Super Mahsa Bros</title>
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&display=swap');
   html, body {
     margin: 0;
     padding: 0;
-    background: #0b1a3a;
+    background: #0a0f2a;
     display: flex;
     justify-content: center;
     align-items: center;
     height: 100%;
-    font-family: 'Courier New', monospace;
+    font-family: 'Baloo 2', 'Courier New', monospace;
   }
   #wrap {
     text-align: center;
   }
   canvas {
-    background: #0b1a3a;
+    background: #0a0f2a;
     border: 4px solid #222;
-    image-rendering: pixelated;
   }
   #hud {
-    color: #fff;
-    font-size: 20px;
+    color: #ffcf3d;
+    font-size: 22px;
+    font-weight: 700;
     margin-bottom: 8px;
-    text-shadow: 2px 2px #000;
+    text-shadow: 0 0 10px rgba(255, 207, 61, 0.6), 2px 2px 0 rgba(20, 10, 40, 0.8);
   }
   #msg {
-    color: #fff;
+    color: #cfe0ff;
     font-size: 16px;
+    font-weight: 700;
     margin-top: 8px;
-    text-shadow: 1px 1px #000;
+    text-shadow: 1px 1px 0 rgba(20, 10, 40, 0.8);
     min-height: 20px;
   }
   #titleScreen {
@@ -115,6 +117,13 @@
   const GRAVITY = 0.6;
   const GROUND_Y = 360;
   const WORLD_WIDTH = 3200;
+
+  const stars = Array.from({ length: 40 }, () => ({
+    x: Math.random() * (WORLD_WIDTH + 400),
+    y: Math.random() * 220,
+    r: Math.random() * 1.4 + 0.6,
+    a: Math.random() * 0.5 + 0.4,
+  }));
 
   const keys = {};
   window.addEventListener('keydown', e => {
@@ -297,9 +306,38 @@
   }
 
   function drawBackground() {
-    ctx.fillStyle = '#0b1a3a';
+    const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    sky.addColorStop(0, '#060a2a');
+    sky.addColorStop(0.55, '#151c4a');
+    sky.addColorStop(1, '#2c3570');
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#ffffff';
+
+    // stars (subtle parallax)
+    for (const s of stars) {
+      const sx = s.x - camX * 0.15;
+      if (sx < -10 || sx > canvas.width + 10) continue;
+      ctx.fillStyle = `rgba(255,255,255,${s.a})`;
+      ctx.beginPath();
+      ctx.arc(sx, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // moon with soft glow, gently parallaxed
+    const moonX = canvas.width - 100 - camX * 0.1;
+    const moonY = 70;
+    const glow = ctx.createRadialGradient(moonX, moonY, 4, moonX, moonY, 46);
+    glow.addColorStop(0, 'rgba(255,250,220,0.55)');
+    glow.addColorStop(1, 'rgba(255,250,220,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, 46, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fdf6d8';
+    ctx.beginPath();
+    ctx.arc(moonX, moonY, 22, 0, Math.PI * 2);
+    ctx.fill();
+
     for (let i = 0; i < 6; i++) {
       const cx = ((i * 400 - camX * 0.3) % (canvas.width + 200)) - 100;
       drawCloud(cx, 60 + (i % 3) * 30);
@@ -307,11 +345,56 @@
   }
 
   function drawCloud(x, y) {
+    const puff = (px, py, r) => {
+      const g = ctx.createRadialGradient(px - r * 0.3, py - r * 0.3, r * 0.1, px, py, r);
+      g.addColorStop(0, 'rgba(255,255,255,0.95)');
+      g.addColorStop(1, 'rgba(200,210,240,0.55)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    puff(x, y, 18);
+    puff(x + 20, y - 10, 24);
+    puff(x + 42, y, 18);
+  }
+
+  function drawGoomba(en) {
+    const { x, y, w, h } = en;
+    const cx = x + w / 2;
+    ctx.save();
+    // cap (mushroom body)
+    ctx.fillStyle = '#8b4513';
     ctx.beginPath();
-    ctx.arc(x, y, 18, 0, Math.PI * 2);
-    ctx.arc(x + 20, y - 10, 22, 0, Math.PI * 2);
-    ctx.arc(x + 40, y, 18, 0, Math.PI * 2);
+    ctx.moveTo(x + w * 0.06, y + h);
+    ctx.quadraticCurveTo(x, y + h * 0.2, cx, y + h * 0.15);
+    ctx.quadraticCurveTo(x + w, y + h * 0.2, x + w * 0.94, y + h);
+    ctx.quadraticCurveTo(x + w * 0.85, y + h * 0.78, x + w * 0.62, y + h * 0.78);
+    ctx.lineTo(x + w * 0.38, y + h * 0.78);
+    ctx.quadraticCurveTo(x + w * 0.15, y + h * 0.78, x + w * 0.06, y + h);
+    ctx.closePath();
     ctx.fill();
+    // feet
+    ctx.fillStyle = '#5a2e0c';
+    ctx.beginPath();
+    ctx.ellipse(cx, y + h * 0.98, w * 0.46, h * 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // eyes
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(x + w * 0.32, y + h * 0.42, w * 0.16, h * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x + w * 0.68, y + h * 0.42, w * 0.16, h * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(x + w * 0.34, y + h * 0.46, w * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x + w * 0.7, y + h * 0.46, w * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   function drawAlpaca() {
@@ -321,16 +404,16 @@
     ctx.save();
 
     // legs
-    ctx.fillStyle = '#3a78c9';
+    ctx.fillStyle = '#6dbf85';
     ctx.fillRect(x + w * 0.14, y + h * 0.82, w * 0.2, h * 0.2);
     ctx.fillRect(x + w * 0.66, y + h * 0.82, w * 0.2, h * 0.2);
 
     // fluffy body
-    ctx.fillStyle = '#4a90e2';
+    ctx.fillStyle = '#8fd9a0';
     ctx.beginPath();
     ctx.ellipse(cx, y + h * 0.62, w * 0.58, h * 0.36, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#5ea0f0';
+    ctx.fillStyle = '#a8e6b0';
     const tufts = [[-0.42, -0.08], [0.42, -0.08], [0, -0.3], [-0.5, 0.22], [0.5, 0.22]];
     for (const [dx, dy] of tufts) {
       ctx.beginPath();
@@ -339,13 +422,13 @@
     }
 
     // tail
-    ctx.fillStyle = '#5ea0f0';
+    ctx.fillStyle = '#a8e6b0';
     ctx.beginPath();
     ctx.arc(x - facing * w * 0.05 + (facing > 0 ? 0 : w), y + h * 0.55, w * 0.14, 0, Math.PI * 2);
     ctx.fill();
 
     // neck
-    ctx.fillStyle = '#4a90e2';
+    ctx.fillStyle = '#8fd9a0';
     ctx.beginPath();
     ctx.ellipse(cx + facing * w * 0.05, y + h * 0.18, w * 0.24, h * 0.3, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -358,14 +441,14 @@
     ctx.fill();
 
     // ears
-    ctx.fillStyle = '#3a78c9';
+    ctx.fillStyle = '#6dbf85';
     ctx.beginPath();
     ctx.ellipse(headCx - w * 0.3, headCy - h * 0.3, w * 0.13, h * 0.2, -0.4, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
     ctx.ellipse(headCx + w * 0.3, headCy - h * 0.3, w * 0.13, h * 0.2, 0.4, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#dceeff';
+    ctx.fillStyle = '#e8f9e8';
     ctx.beginPath();
     ctx.ellipse(headCx - w * 0.3, headCy - h * 0.3, w * 0.06, h * 0.1, -0.4, 0, Math.PI * 2);
     ctx.fill();
@@ -374,7 +457,7 @@
     ctx.fill();
 
     // muzzle
-    ctx.fillStyle = '#eaf4ff';
+    ctx.fillStyle = '#fbeedd';
     ctx.beginPath();
     ctx.ellipse(headCx + facing * w * 0.18, headCy + h * 0.08, w * 0.26, h * 0.16, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -415,19 +498,29 @@
     ctx.save();
     ctx.translate(-camX, 0);
 
-    ctx.fillStyle = '#8b4513';
     for (const p of level.platforms) {
-      ctx.fillStyle = '#8b4513';
+      ctx.fillStyle = '#2e2140';
       ctx.fillRect(p.x, p.y, p.w, p.h);
-      ctx.fillStyle = '#3a9d23';
+      ctx.fillStyle = '#2f6b46';
       ctx.fillRect(p.x, p.y, p.w, 8);
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(p.x, p.y + 8, p.w, 2);
     }
 
-    ctx.fillStyle = '#ffd700';
     for (const coin of level.coins) {
       if (coin.collected) continue;
+      const ccx = coin.x + coin.w / 2;
+      const ccy = coin.y + coin.h / 2;
+      const glow = ctx.createRadialGradient(ccx, ccy, 2, ccx, ccy, coin.w);
+      glow.addColorStop(0, 'rgba(255,224,130,0.55)');
+      glow.addColorStop(1, 'rgba(255,224,130,0)');
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(coin.x + coin.w / 2, coin.y + coin.h / 2, coin.w / 2, 0, Math.PI * 2);
+      ctx.arc(ccx, ccy, coin.w, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      ctx.arc(ccx, ccy, coin.w / 2, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = '#b8860b';
       ctx.stroke();
@@ -435,19 +528,12 @@
 
     for (const en of level.enemies) {
       if (!en.alive) continue;
-      ctx.fillStyle = '#8b4513';
-      ctx.fillRect(en.x, en.y, en.w, en.h);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(en.x + 4, en.y + 6, 6, 6);
-      ctx.fillRect(en.x + en.w - 10, en.y + 6, 6, 6);
-      ctx.fillStyle = '#000';
-      ctx.fillRect(en.x + 6, en.y + 8, 2, 2);
-      ctx.fillRect(en.x + en.w - 8, en.y + 8, 2, 2);
+      drawGoomba(en);
     }
 
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = '#c7d0e6';
     ctx.fillRect(level.flag.x, level.flag.y, 6, level.flag.h);
-    ctx.fillStyle = '#e60000';
+    ctx.fillStyle = '#ffcf3d';
     ctx.beginPath();
     ctx.moveTo(level.flag.x + 6, level.flag.y);
     ctx.lineTo(level.flag.x + 40, level.flag.y + 15);
@@ -460,19 +546,25 @@
     ctx.restore();
 
     if (gameOver) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillStyle = 'rgba(6,10,42,0.72)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#fff';
-      ctx.font = '32px monospace';
+      ctx.fillStyle = '#ffcf3d';
+      ctx.font = '800 34px "Baloo 2", sans-serif';
       ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(255,207,61,0.7)';
+      ctx.shadowBlur = 16;
       ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2);
+      ctx.shadowBlur = 0;
     } else if (won) {
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillStyle = 'rgba(6,10,42,0.6)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#fff';
-      ctx.font = '32px monospace';
+      ctx.fillStyle = '#ffcf3d';
+      ctx.font = '800 34px "Baloo 2", sans-serif';
       ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(255,207,61,0.7)';
+      ctx.shadowBlur = 16;
       ctx.fillText('YOU WIN!', canvas.width / 2, canvas.height / 2);
+      ctx.shadowBlur = 0;
     }
   }
 
