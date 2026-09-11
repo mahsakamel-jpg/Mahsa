@@ -1,0 +1,31 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #5c94fc;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  font-family: 'Courier New', monospace;
+}
+#wrap {
+  text-align: center;
+}
+canvas {
+  background: #5c94fc;
+  border: 4px solid #222;
+  image-rendering: pixelated;
+}
+#hud {
+  color: #fff;
+  font-size: 20px;
+  margin-bottom: 8px;
+  text-shadow: 2px 2px #000;
+}
+#msg {
+  color: #fff;
+  font-size: 16px;
+  margin-top: 8px;
+  text-shadow: 1px 1px #000;
+  min-height: 20px;
+}
