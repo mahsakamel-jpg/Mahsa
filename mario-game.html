@@ -146,6 +146,9 @@
       <option value="normal" selected>Normal</option>
       <option value="hard">Hard</option>
     </select>
+    <button id="btnPractice1" class="practiceBtn">Practice Level 1</button>
+    <button id="btnPractice2" class="practiceBtn">Practice Level 2</button>
+    <button id="btnPractice3" class="practiceBtn">Practice Level 3</button>
   </div>
   <div class="btnRow">
     <label for="remapLeft">Extra left key:</label>
@@ -406,7 +409,12 @@
   window.addEventListener('keydown', e => {
     const focusedTag = document.activeElement && document.activeElement.tagName;
     const onFormControl = focusedTag === 'SELECT' || focusedTag === 'BUTTON' || focusedTag === 'INPUT';
-    if (!onFormControl && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+    // Let a focused form control (difficulty/remap selects, toolbar buttons)
+    // handle its own keyboard input entirely - game shortcuts (pause/mute/
+    // restart/confirm/etc.) must not also fire just because a key happens
+    // to share a code with one of them.
+    if (onFormControl) return;
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
     Audio1.unlock();
     if (keys[e.code]) return;
     keys[e.code] = true;
@@ -506,11 +514,11 @@
   // Level definitions (3 levels, increasing difficulty & verticality)
   // ---------------------------------------------------------------------
   const PALETTE = {
-    normal: { ground: '#8b4513', grass: '#3a9d23', coin: '#ffd700', coinStroke: '#b8860b', goomba: '#8b4513', goombaBelly: '#5a2e0c', bat: '#4a2e83', batWing: '#2c1a52', batEye: '#ff4040', hopper: '#2ecc71', hopperBelly: '#1e8449', spike: '#888888', flagPole: '#555555', flagCloth: '#e60000', shield: '#00c8ff', star: '#ffea00', checkpointOff: '#888888', checkpointOn: '#3a9d23' },
+    normal: { ground: '#8b4513', grass: '#3a9d23', coin: '#ffd700', coinStroke: '#b8860b', goomba: '#8b4513', goombaBelly: '#5a2e0c', bat: '#4a2e83', batWing: '#2c1a52', batEye: '#ff4040', hopper: '#2ecc71', hopperBelly: '#1e8449', spike: '#888888', flagPole: '#555555', flagCloth: '#e60000', shield: '#00c8ff', star: '#ffea00', checkpointOff: '#888888', checkpointOn: '#3a9d23', playerTop: '#e60000', playerBottom: '#0000cd' },
     // Deliberately large hue/lightness jumps (not just a filter) so the two
     // palettes read as genuinely different, not a subtle tint - verified via
     // reviewer feedback that a near-identical "accessible" palette is useless.
-    access: { ground: '#5c3a00', grass: '#39ff14', coin: '#fff200', coinStroke: '#000000', goomba: '#ff8c00', goombaBelly: '#803d00', bat: '#ff00ff', batWing: '#990099', batEye: '#00ffff', hopper: '#00ff9f', hopperBelly: '#00996a', spike: '#ffffff', flagPole: '#ffffff', flagCloth: '#ff0000', shield: '#00ffff', star: '#fff200', checkpointOff: '#ffffff', checkpointOn: '#39ff14' },
+    access: { ground: '#5c3a00', grass: '#39ff14', coin: '#fff200', coinStroke: '#000000', goomba: '#ff8c00', goombaBelly: '#803d00', bat: '#ff00ff', batWing: '#990099', batEye: '#00ffff', hopper: '#00ff9f', hopperBelly: '#00996a', spike: '#ffffff', flagPole: '#ffffff', flagCloth: '#ff0000', shield: '#00ffff', star: '#fff200', checkpointOff: '#ffffff', checkpointOn: '#39ff14', playerTop: '#ff2020', playerBottom: '#00ffff' },
   };
   function pal(name) { return (save.highContrast ? PALETTE.access : PALETTE.normal)[name]; }
 
@@ -859,6 +867,16 @@
     updateBestDisplay();
   });
 
+  // touch/mouse equivalent of the 1/2/3 practice-mode keyboard shortcut, so
+  // players without a keyboard (phones/tablets) can reach it too
+  [0, 1, 2].forEach(idx => {
+    const btn = document.getElementById('btnPractice' + (idx + 1));
+    btn.addEventListener('click', () => {
+      Audio1.unlock();
+      if (state === STATE.START) startAtLevel(idx);
+    });
+  });
+
   canvas.addEventListener('click', () => {
     Audio1.unlock();
     canvas.focus();
@@ -1187,10 +1205,10 @@
       const hue = (Math.floor(Date.now() / 60) % 6) * 60;
       ctx.fillStyle = `hsl(${hue},90%,60%)`;
     } else {
-      ctx.fillStyle = '#e60000';
+      ctx.fillStyle = pal('playerTop');
     }
     ctx.fillRect(px, py, player.w, player.h * 0.5);
-    ctx.fillStyle = player.star > 0 ? '#fff' : '#0000cd';
+    ctx.fillStyle = player.star > 0 ? '#fff' : pal('playerBottom');
     ctx.fillRect(px, py + player.h * 0.5, player.w, player.h * 0.5 - (player.onGround ? bob : 0));
 
     // face
