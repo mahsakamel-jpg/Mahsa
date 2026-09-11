@@ -1019,10 +1019,14 @@
             score += 100;
           }
         } else if (player.shielded) {
+          // stop checking further enemies this frame once the shield is
+          // consumed, the same way the hazard loop does - don't rely on
+          // invuln (set just below) to incidentally prevent a double-hit
           player.shielded = false;
           player.invuln = 60;
           levelHitTaken = true;
           addShake(4);
+          break;
         } else {
           loseLife();
           return;
