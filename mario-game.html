@@ -404,7 +404,9 @@
   const touchState = { left: false, right: false, jump: false };
 
   window.addEventListener('keydown', e => {
-    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+    const focusedTag = document.activeElement && document.activeElement.tagName;
+    const onFormControl = focusedTag === 'SELECT' || focusedTag === 'BUTTON' || focusedTag === 'INPUT';
+    if (!onFormControl && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
     Audio1.unlock();
     if (keys[e.code]) return;
     keys[e.code] = true;
@@ -1013,7 +1015,19 @@
           if (isBoss) {
             en.hp = (en.hp || 1) - 1;
             score += 50;
-            if (en.hp <= 0) { en.alive = false; score += 300; announce('Boss defeated!'); }
+            if (en.hp <= 0) {
+              en.alive = false;
+              score += 300;
+              announce('Boss defeated!');
+            } else {
+              // the boss survives a non-lethal hit and stays alive/tall, so
+              // the small bounce (vy=-8) often can't clear its 56px hitbox
+              // in one frame - without a brief grace period, residual
+              // overlap next frame (with vy still negative) fails the
+              // "stomped" recheck and would wrongly cost a life right after
+              // a successful hit
+              player.invuln = 30;
+            }
           } else {
             en.alive = false;
             score += 100;
