@@ -1,0 +1,62 @@
+name: Generate game sound effects (ElevenLabs)
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  generate-sounds:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate sound effects via ElevenLabs
+        env:
+          ELEVENLABS_KEY: ${{ secrets.ELEVENLABS }}
+        run: |
+          set -e
+          mkdir -p assets/sounds
+
+          generate() {
+            name="$1"
+            prompt="$2"
+            duration="$3"
+            echo "Generating $name.mp3 ..."
+            http_code=$(curl -sS -o "assets/sounds/$name.mp3" -w "%{http_code}" \
+              -X POST "https://api.elevenlabs.io/v1/sound-generation" \
+              -H "xi-api-key: $ELEVENLABS_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"text\": \"$prompt\", \"duration_seconds\": $duration, \"prompt_influence\": 0.3}")
+            if [ "$http_code" != "200" ]; then
+              echo "ElevenLabs request for $name failed with HTTP $http_code:"
+              cat "assets/sounds/$name.mp3"
+              echo
+              exit 1
+            fi
+          }
+
+          generate "jump" "A short cute cartoon boing hop sound effect, like a fluffy baby alpaca hopping, playful high-pitched video game jump sound" 0.6
+          generate "coin" "A cheerful bright chime sparkle sound effect for collecting a coin in a cute video game, high pitched twinkle" 0.6
+          generate "stomp" "A soft cute squash pop sound effect for stomping a small round cartoon mushroom enemy in a video game, playful squish" 0.5
+          generate "hurt" "A short descending boop sound effect for losing a life in a cute video game, soft and not scary, gentle" 0.6
+          generate "gameover" "A short sad but cute descending melody for a game over screen in a cartoon video game, gentle, not harsh" 1.8
+          generate "win" "A short cheerful victory fanfare jingle for winning a level in a cute cartoon video game, bright and happy" 2.2
+          generate "start" "A cute happy alpaca chirp and hum vocalization sound effect, soft, warm and adorable" 0.8
+
+          echo "Generated files:"
+          ls -la assets/sounds
+
+      - name: Commit generated sounds
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add assets/sounds
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Generate game sound effects via ElevenLabs"
+            git push
+          fi
